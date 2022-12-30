@@ -1,16 +1,25 @@
 '''A basic class that contains all datas'''
 import os
 import pickle as pkl
+from typing import Tuple
+
 from utils import dataset_utils
 
 '''Switch cases'''
 SETTING2SPLITS = {
-    'active_learning': ['init_triples', 'unexplored_triples']
+    'active_learning': ['init', 'unexplored']
 }
 
 class KGDataset(object):
 
-    def __init__(self, data_path, debug, setting) -> None:
+    def __init__(self, data_path, setting, debug=False) -> None:
+        """initialize the KGDataset 
+
+        Args:
+            data_path (str): where the data is
+            setting (str): which kind of setting we are going to use
+            debug (bool, optional): whether or not use debug mode, means using a few data. Default to be False
+        """
 
         print("Initializing KG Dataset.")
         
@@ -18,6 +27,9 @@ class KGDataset(object):
         self.data_path = data_path
         self.debug = debug
         self.data = {}
+        self.setting = setting
+        self.n_ent = 0
+        self.n_rel = 0
 
         # get splits setting
         try:
@@ -28,21 +40,47 @@ class KGDataset(object):
         # load data
         all_triples = []
         for split in splits:
-            file_path = os.path.join(self.data_path, split + '.txt')
+            file_path = os.path.join(self.data_path, setting, split + '_triples.pkl')
             with open(file_path, 'rb') as f:
                 self.data[split] = pkl.load(f)
                 all_triples.extend(self.data[split])
 
-        n_ent, n_rel = dataset_utils.get_entity_and_relation_size(all_triples)
+        self.n_ent, self.n_rel = dataset_utils.get_entity_and_relation_size(all_triples)
         del all_triples # TODO write in a more elegant way
 
+        print("Load data successfully.")
+        # TODO add the debug mode
+        return 
 
+    def get_example(self, split, use_reciprocal=True):
+        """get examples in a split
+
+        Args:
+            split (str): string indicating the split to use
+            use_reciprocal (bool, optional): where or not using reciprocal setting, i.e., turn tail prediction to head prediction. Defaults to True.
+
+        Returns:
+            examples: the data
+        """
+        # TODO use a switch style to implement other settings, here we only start with the active learning setting
+        examples = []
+
+        try:
+            examples = self.data[split]
+        except KeyError:
+            print(f"Current setting \"{self.setting}\" does not have the split \"{split}\"")
+
+        return examples
         
 
-
-    def get_example(self, split):
-        pass
-
-    def get_shape(self):
+    def get_shape(self) -> Tuple[int, int]:
         """return the entity and relation size
         """
+        return self.n_ent, self.n_rel
+
+'''Testing functions'''
+if __name__ == "__main__":
+    dataset = KGDataset('data/WN18', 'active_learning')
+    dataset.get_example('a')
+
+
