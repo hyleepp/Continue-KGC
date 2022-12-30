@@ -1,6 +1,9 @@
 import os
 import random
+import json
+
 import pickle
+import numpy as np
 
 from utils import dataset_utils
 
@@ -195,11 +198,13 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     # save as pickle
     with open(os.path.join(data_path, "active_learning", "init_triples.pkl"), 'wb') as f:
         int_init_triples = dataset_utils.triples_str_to_int(init_triples)
-        pickle.dump(int_init_triples, f)
+        ndarray_init_triples = np.asarray(int_init_triples).astype('int64')
+        pickle.dump(ndarray_init_triples, f)
 
     with open(os.path.join(data_path, "active_learning", "unexplored_triples.pkl"), 'wb') as f:
         int_unexplored_triples = dataset_utils.triples_str_to_int(unexplored_triples)
-        pickle.dump(int_unexplored_triples, f)
+        ndarray_unexplored_tripls = np.asarray(int_unexplored_triples).astype('int64')
+        pickle.dump(ndarray_unexplored_tripls, f)
 
     # transform to writable ones
     init_triples = dataset_utils.triples_to_lines(init_triples)
@@ -211,7 +216,18 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     
     with open(os.path.join(data_path, "active_learning", "unexplored_triples.txt"), 'w') as f:
         f.writelines(unexplored_triples)
+    
+    # write some characteristics about the dataset in Json
+    dataset_config = {
+        "n_ent": n_ent,
+        "n_rel": n_rel,
+        "init_ratio": init_ratio,
+        "random_seed": random_seed
+    }
 
+    with open(os.path.join(data_path, "active_learning", "dataset_config.json"), 'w+') as f:
+        dataset_config = json.dumps(dataset_config)
+        f.write(dataset_config)
     
     print("create activating setting datasets done successfully.") 
 
@@ -222,4 +238,4 @@ if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/WN18')
+    generate_active_learning_dataset('data/FB15K')

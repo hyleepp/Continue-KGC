@@ -1,6 +1,9 @@
 '''utils'''
 import os
 
+import numpy as np
+from numpy import ndarray
+
 def mkdir(path):
 
     folder = os.path.exists(path)
@@ -61,8 +64,18 @@ def lines_to_triples(lines):
     ret = list(map(line_to_triple, lines))
     return ret
     
-def triples_str_to_int(triples):
+def triples_str_to_int(triples) -> list:
+    """transform the triples to lines with 'h r t\n'
+
+    Args:
+        triples (list): [h, r, t]
+
+    Returns:
+        ret: ['h r t\n'], except the last item 
+    """
     ret = []
     for h, r, t in triples:
          ret.append((int(h), int(r), int(t)))
     return ret 
+
+
