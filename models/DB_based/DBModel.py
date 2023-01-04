@@ -1,49 +1,46 @@
 '''Base Model for distance or bilinear based models
-
-[h, r, t] -(get_embedding, optional to use a encoder like gcn)-> encoded_embeddings -(score_function)-> score
-
 '''
 
-from abc import ABC, abstractmethod
-
-import numpy as np
 from numpy import ndarray
-import torch
+import torch 
 import torch.nn as nn
-from torch import Tensor
+from torch import Tensor 
 
-class KGModel(nn.Module, ABC):
+from ..KGModel import KGModel
 
-    def __init__(self) -> None:
-        super().__init__()
+class DBModel(KGModel):
+
+    def __init__(self, n_ent, n_rel, hidden_size) -> None:
+
+        super().__init__(n_ent, n_rel, hidden_size)
+
+        # naive version of embeddings
+        self.emb_ent = nn.Embedding(n_ent, hidden_size)
+        self.emb_rel = nn.Embedding(n_rel, hidden_size)
+
+        return
     
-    @abstractmethod
-    def get_embeddings():
-        pass
     
-    @abstractmethod
-    def score_func():
-        pass
+    def get_embeddings(self, triples: ndarray) -> Tensor:
 
-    @abstractmethod
-    def get_reg(self, triples):
-        pass
+        emb_h = self.emb_ent[triples[0]]
+        emb_r = self.emb_rel[triples[1]]
+        emb_t = self.emb_ent[triples[2]]
 
-    def forward(self, triples, eval_model=False):
+        return emb_h, emb_r, emb_t
 
-        # triples -> embedding (may contains an extra encoder like gnn)
-        embeddings = self.get_embeddings(triples)
-        # embedding -> score
-        scores = self.score_func(embeddings)
+    # both score_func and get_reg are need to be implemented in child classes
+
+    
+    
         
-        # get regularization terms
-        reg = self.get_reg(triples)
-
-        return scores, reg
-        
-
-
+    
+    
 
         
 
+    
+    
 
+        
+    
