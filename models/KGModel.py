@@ -36,20 +36,20 @@ class KGModel(nn.Module, ABC):
         pass
     
     @abstractmethod
-    def score_func(self, emb_h: Tensor, emb_r: Tensor, emb_t: Tensor) -> Tensor:
+    def score_func(self, emb_h: Tensor, emb_r: Tensor, emb_t: Tensor, eval_model=False) -> Tensor:
         """calculate the score based on embeddings 
 
         Args:
             emb_h (Tensor): the embeddings of head entities 
             emb_r (Tensor): the embeddings of relations
             emb_t (Tensor): the embeddings of tail entities
+            eval_mode(Bool): use eval mode, means each (h, r) pair matches all candidate entities 
 
         Returns:
             Tensor: the score of each triple
         """
         pass
 
-    @abstractmethod
     def get_reg(self, triples: Tensor) -> Tensor:
         """calculate the regularization terms
 
@@ -59,15 +59,15 @@ class KGModel(nn.Module, ABC):
         Returns:
             Tensor: the reg terms
         """
-        pass
+        return 0 # the default setting, without reg
 
 
-    def forward(self, triples: ndarray, eval_model=False) -> Tuple[Tensor, Tensor]:
+    def forward(self, triples: ndarray, eval_mode=False) -> Tuple[Tensor, Tensor]:
         """forward function
 
         Args:
             triples (ndarray): input triples
-            eval_model (bool, optional): whether or not use eval mode. Defaults to False.
+            eval_mode (bool, optional): whether or not use eval mode. Defaults to False.
 
         Returns:
             scores: the forward scores
@@ -77,7 +77,7 @@ class KGModel(nn.Module, ABC):
         # triples -> embedding (may contains an extra encoder like gnn)
         emb_h, emb_r, emb_t = self.get_embeddings(triples)
         # embedding -> score
-        scores = self.score_func(emb_h, emb_r, emb_t)
+        scores = self.score_func(emb_h, emb_r, emb_t, eval_mode)
         
         # get regularization terms
         reg = self.get_reg(triples)
