@@ -84,7 +84,3 @@ class KGModel(nn.Module, ABC):
 
         return scores, reg
         
-
-
-
-        
