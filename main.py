@@ -1,14 +1,13 @@
 import argparse
 import os
 import sys
-mcdir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-# print(mcdir)
-sys.path.append(mcdir)
+# mcdir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# # print(mcdir)
+# sys.path.append(mcdir)
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 
 
