@@ -14,11 +14,11 @@ from torch import Tensor
 
 class KGModel(nn.Module, ABC):
 
-    def __init__(self, n_ent, n_rel, hidden_size) -> None:
+    def __init__(self, args) -> None: # here we use args is because we need to implement various of models that need different params
         super().__init__()
-        self.n_ent = n_ent
-        self.n_rel = n_rel
-        self.hidden_size = hidden_size
+        self.n_ent = args.n_ent
+        self.n_rel = args.n_rel
+        self.hidden_size = args.hidden_size
 
         return 
    
