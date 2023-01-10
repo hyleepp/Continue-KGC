@@ -4,6 +4,7 @@ import json
 
 import pickle
 import numpy as np
+import torch
 
 from utils import dataset_utils
 
@@ -199,11 +200,13 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     with open(os.path.join(data_path, "active_learning", "init_triples.pkl"), 'wb') as f:
         int_init_triples = dataset_utils.triples_str_to_int(init_triples)
         ndarray_init_triples = np.asarray(int_init_triples).astype('int64')
+        ndarray_init_triples = torch.from_numpy(ndarray_init_triples)
         pickle.dump(ndarray_init_triples, f)
 
     with open(os.path.join(data_path, "active_learning", "unexplored_triples.pkl"), 'wb') as f:
         int_unexplored_triples = dataset_utils.triples_str_to_int(unexplored_triples)
         ndarray_unexplored_tripls = np.asarray(int_unexplored_triples).astype('int64')
+        ndarray_unexplored_tripls = torch.from_numpy(ndarray_unexplored_tripls)
         pickle.dump(ndarray_unexplored_tripls, f)
 
     # transform to writable ones
@@ -238,4 +241,4 @@ if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/FB15K')
+    generate_active_learning_dataset('data/WN18')

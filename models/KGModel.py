@@ -23,11 +23,11 @@ class KGModel(nn.Module, ABC):
         return 
    
     @abstractmethod
-    def get_embeddings(self, triples: ndarray) -> Tuple[Tensor, Tensor, Tensor]:
+    def get_embeddings(self, triples: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """triples, one-hot vectors (h, r, t) -> embeddings, dense vectors
 
         Args:
-            triples (np.ndarray): one hot vectors
+            triples (Tensor): one hot vectors
         
         Returns:
             Tensor: the embeddings of all entities and relations in triples
@@ -62,11 +62,11 @@ class KGModel(nn.Module, ABC):
         return 0 # the default setting, without reg
 
 
-    def forward(self, triples: ndarray, eval_mode=False) -> Tuple[Tensor, Tensor]:
+    def forward(self, triples: Tensor, eval_mode=False) -> Tuple[Tensor, Tensor]:
         """forward function
 
         Args:
-            triples (ndarray): input triples
+            triples (Tensor): input triples
             eval_mode (bool, optional): whether or not use eval mode. Defaults to False.
 
         Returns:

@@ -12,3 +12,16 @@ def get_savedir(model_name:str, dataset_name:str) -> str:
     
     os. makedirs(save_dir)
     return save_dir
+
+def count_param(model) -> int:
+    '''Count the number of parameters of the given model'''
+    total = 0
+
+    for x in model.parameters():
+        if x.required_grid:
+            res = 1
+            for y in x.shape:
+                res *= y
+            total += res
+    
+    return total

@@ -12,7 +12,7 @@ from torch import Tensor
 
 class KGOptimizer(nn.Module):
 
-    def __init__(self, model, optimizer, regularizer, neg_size=-1, sta_scale=1, dyn_scale=False, weight=None) -> None:
+    def __init__(self, model, optimizer, regularizer, neg_size=-1, sta_scale=1, debug=False, dyn_scale=False, weight=None) -> None:
         super().__init__()
 
         # check args 
@@ -27,17 +27,20 @@ class KGOptimizer(nn.Module):
         self.sta_scale = sta_scale 
         self.dyn_scale = 1 if dyn_scale else nn.Parameter(torch.Tensor([1]), requires_grad=True)
         self.loss_fn = nn.CrossEntropyLoss(reduction='mean', weight=weight)
-
-
+        
+        self.debug = debug 
+        
 
     def lr_schedule(self) -> None:
         # TODO determine the params
         pass
 
     def get_negative_samples(self, triples) -> None:
+        # TODO
         pass
 
     def calculate_loss(self, triples):
+        '''Calculate the loss of the given triples'''
 
         
         if self.neg_size == -1:
@@ -47,6 +50,7 @@ class KGOptimizer(nn.Module):
         pass
 
     def neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
+        '''The Loss based on negative sample'''
         
         # positive loss 
         positive_scores, reg = self.model(triples)
@@ -65,6 +69,7 @@ class KGOptimizer(nn.Module):
         return loss, reg 
     
     def no_neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
+        '''The loss caluctae without negative sample, like CE'''
 
         predictions, reg = self.model(triples, eval_mode=True)
         truth = triples[:, 2]
@@ -73,6 +78,9 @@ class KGOptimizer(nn.Module):
 
         return loss, reg
 
+
+    def epoch(self):
+        pass
         
         
 

@@ -45,14 +45,3 @@ class TransE(DBModel):
         emb_lhs = emb_h + emb_r
         return - euc_distance(emb_lhs, emb_t, eval_mode)
     
-        
-    
-    
-
-        
-
-    
-    
-
-        
-    
