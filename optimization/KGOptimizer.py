@@ -81,42 +81,62 @@ class KGOptimizer(nn.Module):
         return loss, reg
 
 
-    def epoch(self, triples: Tensor) -> Tensor:
+    def epoch(self, triples: Tensor, split: str) -> Tensor:
         """run one epoch of training
 
         Args:
             triples (Tensor): training triples in shape (N_train x 3)
+            split (str): on train or eval
 
         Returns:
             loss: results of of that batch
         """
 
-        shuffled_triples = triples[torch.randperm(triples.shape[0]), :] 
-        with tqdm(total=shuffled_triples.shape[0], unit='ex', disable=not self.verbose) as bar:
-            bar.set_description("train_loss")
-            b_begin = 0
-            total_loss = 0
-            counter = 0
+        assert split in ['train', 'valid'], "split must be train or valid"
 
-            while b_begin < shuffled_triples.shape[0]:
-                # get input batch
-                input_batch = shuffled_triples[b_begin: b_begin + self.batch_size].cuda()
+        shuffled_triples = triples[torch.randperm(triples.shape[0]), :] if split == 'train' else triples # it is unnecessary to shuffle in valid
+        with torch.enable_grad() if split == 'train' else torch.no_grad():
+            # TODO test if this one works
+            with tqdm(total=shuffled_triples.shape[0], unit='ex', disable=not self.verbose) as bar:
+                bar.set_description(f"{split}_loss")
+                b_begin = 0
+                total_loss = 0
+                counter = 0
 
-                # forward and backward
-                loss = self.calculate_loss(input_batch)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step
+                while b_begin < shuffled_triples.shape[0]:
+                    # get input batch
+                    input_batch = shuffled_triples[b_begin: b_begin + self.batch_size].cuda()
 
-                # prepare for next batch
-                b_begin += self.batch_size
+                    # forward and backward
+                    if split == 'train':
+                        loss = self.calculate_loss(input_batch)
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        self.optimizer.step()
+                    elif split == 'valid':
+                        loss = self.calculate_loss(input_batch)
+                        total_loss += loss
 
-                # update tqdm bar
-                total_loss += 1
-                counter += 1
-                bar.update(input_batch.shape[0])
-                bar.set_postfix(loss=f'{loss.item():.4f}')
+                    # prepare for next batch
+                    b_begin += self.batch_size
 
-        total_loss /= counter
+                    # update tqdm bar
+                    total_loss += 1
+                    counter += 1
+                    bar.update(input_batch.shape[0])
+                    bar.set_postfix(loss=f'{loss.item():.4f}')
+
+            total_loss /= counter
         return total_loss
 
+    def calculate_valid_loss(self, triples: Tensor):
+
+        b_begin = 0
+        loss = 0
+        counter = 0
+
+        with torch.no_grad():
+            while b_begin < triples.shape[0]:
+                input_batch = triples[b_begin, b_begin + self.batch_size].cuda()
+                
+                b_begin += self.batch_size

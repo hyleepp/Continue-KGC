@@ -22,6 +22,8 @@ def prepare_parser():
     parser = argparse.ArgumentParser(
         description="setting for ACKGE"
     )
+
+    '''Basic Setting'''
     parser.add_argument(
         "--dataset", type=str, required=True, help="datasets"
     )
@@ -37,6 +39,12 @@ def prepare_parser():
 
     '''Pretrain Part '''
     parser.add_argument(
+        "--counter", type=int, default=10, help='how many evaluations for waiting another rise in results'
+    )
+    parser.add_argument(
+        "--max_epochs", type=int, default=200, help='training epochs'
+    )
+    parser.add_argument(
         "--need_pretrain", type=bool, action="store true", help="need pretrain in the init split?"
     )
     parser.add_argument(
@@ -45,15 +53,13 @@ def prepare_parser():
     parser.add_argument(
         "--train_ratio", type=float, default=0.9, help="train / (train + valid)"
     )
+    parser.add_argument(
+        "--valid_period", type=int, default=5, help="how often test performance on valid set"
+    )
 
+    '''Incremental Part''' 
     parser.add_argument(
         "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
-    )
-    parser.add_argument(
-        "--max_epochs", type=int, default=200, help='training epochs'
-    )
-    parser.add_argument(
-        "--counter", type=int, default=10, help='how many evaluations for waiting another rise in results'
     )
     parser.add_argument(
         "--active_num", type=int, default=1000, help= "how many active labels for each epoch"
@@ -149,10 +155,24 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
         train_count = int(len(init_triples) * args.train_ratio)
         train_triples, valid_triples = init_triples[:train_count], init_triples[train_count:]
 
-        # pre_train
+        # pretraining
         for step in range(args.max_epochs):
+
+            # Train step
             model.train()
             train_loss = optimizer.epoch(train_triples)
+            logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
+
+            # Valid step
+            model.eval()
+            valid_loss = optimizer.calculate_valid_loss(valid_triples)
+            logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
+
+            # TODO write losses
+
+            # Test on valid 
+            if (step + 1) % args.valid == 0:
+
 
 
         # training with extra valid setting, use init to train
