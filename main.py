@@ -34,8 +34,20 @@ def prepare_parser():
     parser.add_argument(
         "--reg_weight", type=float, default=0, help='the weight of reg term'
     )
+
+    '''Pretrain Part '''
     parser.add_argument(
-        "--learning_rate", type=float, default=1e-3, help='learning rate'
+        "--need_pretrain", type=bool, action="store true", help="need pretrain in the init split?"
+    )
+    parser.add_argument(
+        "--pretrain_learning_rate", type=float, default=1e-3, help='learning rate for pretraining'
+    )
+    parser.add_argument(
+        "--train_ratio", type=float, default=0.9, help="train / (train + valid)"
+    )
+
+    parser.add_argument(
+        "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
     )
     parser.add_argument(
         "--max_epochs", type=int, default=200, help='training epochs'
@@ -45,6 +57,9 @@ def prepare_parser():
     )
     parser.add_argument(
         "--active_num", type=int, default=1000, help= "how many active labels for each epoch"
+    )
+    parser.add_argument(
+        "--expected_completion_ratio", type=float, default=0.99, help= "when the completion can be treated as almost done"
     )
     parser.add_argument(
         "--setting", type=str, choices=['active_learning'], help='which setting in KG'
@@ -57,6 +72,11 @@ def prepare_parser():
     )
 
     return parser.parse_args()
+
+
+def organize_args(args):
+    '''organize args into a hierarchial style'''
+    pass
 
 
 ''' Preparation
@@ -90,8 +110,6 @@ def initialization(args):
     # Load data, default for active learning
     # TODO add info
     # TODO add other cases
-    init_triples = dataset.get_example('init')
-    unexplored_triples = dataset.get_example('unexplored')
 
     # TODO ce_weight
 
@@ -109,28 +127,60 @@ def initialization(args):
     optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate)
     optimizer = KGOptimizer(model, optim_method, regularizer, args.neg_size, args.sta_scale, debug=args.debug)
 
-    return (init_triples, unexplored_triples), model, optimizer
+    return dataset, model, optimizer
     
 
-def active_learning_running()
+def active_learning_running(dataset, model, optimizer, expected_completion_ratio, need_pretrain=False) -> None:
+
+    # get data of each splits
+    init_triples = dataset.get_example('init')
+    unexplored_triples = dataset.get_example('unexplored')
+
+    # init training
     early_stop_counter = 0
     best_mrr = None
     best_epoch = None
     # TODO add other cases 
     logging.info("\t Start Init Training.")
-    for step in range(args.max_epochs):
 
-        model.train()
-        
 
-    #
+    if need_pretrain:
+        # seprate the init set into training and eval set
+        train_count = int(len(init_triples) * args.train_ratio)
+        train_triples, valid_triples = init_triples[:train_count], init_triples[train_count:]
+
+        # pre_train
+        for step in range(args.max_epochs):
+            model.train()
+            train_loss = optimizer.epoch(train_triples)
+
+
+        # training with extra valid setting, use init to train
+
+        # save the trained model
+    else:
+        # load model
+        pass
+    
+
+    # continue active completion
+    completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))
+
+    while completion_ratio < expected_completion_ratio:
+        # prediction
+
+        # incremental training
+
+        # update completion ratio
+
+        # save the current completion ratio
+        pass
 
 
 
 
 if __name__ == "__main__":
     args = prepare_parser()
+    # args = organize_args(args) # TODO finish that 
     dataset, model, optimizer = initialization(args)
-    
-
     
