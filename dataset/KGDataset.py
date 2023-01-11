@@ -55,8 +55,8 @@ class KGDataset(object):
         # TODO add the debug mode
         return 
 
-    def get_example(self, split, use_reciprocal=True):
-        """get examples in a split
+    def get_triples(self, split, use_reciprocal=True):
+        """get triples in a split
 
         Args:
             split (str): string indicating the split to use
@@ -85,6 +85,6 @@ class KGDataset(object):
 if __name__ == "__main__":
     dataset = KGDataset('data/WN18', 'active_learning')
     print(dataset.n_ent, dataset.n_rel)
-    dataset.get_example('a')
+    dataset.get_triples('a')
 
 

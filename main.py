@@ -2,10 +2,12 @@ import argparse
 import logging
 import os
 import sys
+import json
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 import models
 from models import ALL_MODELS 
@@ -105,6 +107,16 @@ def prepare_logger(save_dir:str) -> None:
 
     return
 
+def save_config(args, save_dir) -> None:
+    '''save the config in both logger and json'''
+
+    for k, v in sorted(vars(args).items()):
+        logging.info(f'{k} = {v}')
+    with open(os.path.join(save_dir, "config.json"), "w") as fjson:
+        json.dump(vars(args), fjson)
+
+    return
+
 def initialization(args):
     """initialize settings like logger and return dataset, optimizer and model
 
@@ -120,19 +132,22 @@ def initialization(args):
     prepare_logger(save_dir)
 
     # tensor board
-    tb_writer = 
+    tb_writer = SummaryWriter(save_dir, flush_secs=5)
 
     # create dataset
     dataset_path = os.path.join(os.environ['DATA_PATH'], args.dataset)
     dataset = KGDataset(dataset_path, args.setting, args.debug)
 
+    # save configs 
+    save_config(args, save_dir)
+
+    
+
     # Load data, default for active learning
+    logging.info(f"\t Loading {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape)}")
+
     # TODO add info
-    # TODO add other cases
-
     # TODO ce_weight
-
-    # save_config
 
     # create model
     model = getattr(models, args.model)(args)
@@ -151,11 +166,11 @@ def initialization(args):
 
 def active_learning_running(dataset, model, optimizer, expected_completion_ratio, need_pretrain=False) -> None:
 
-    # get data of each splits
+    # Data Loading
     init_triples = dataset.get_example('init')
     unexplored_triples = dataset.get_example('unexplored')
 
-    # init training
+    # Init Training
     early_stop_counter = 0
     best_mrr = None
     best_epoch = None
