@@ -141,8 +141,6 @@ def initialization(args):
     # save configs 
     save_config(args, save_dir)
 
-    
-
     # Load data, default for active learning
     logging.info(f"\t Loading {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape)}")
 
@@ -167,8 +165,8 @@ def initialization(args):
 def active_learning_running(dataset, model, optimizer, expected_completion_ratio, need_pretrain=False) -> None:
 
     # Data Loading
-    init_triples = dataset.get_example('init')
-    unexplored_triples = dataset.get_example('unexplored')
+    init_triples = dataset.get_example('init', use_reciprocal=True) # here we consider training is default to use reciprocal setting
+    unexplored_triples = dataset.get_example('unexplored', use_reciprocal=False)
 
     # Init Training
     early_stop_counter = 0
@@ -200,7 +198,10 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
 
             # Test on valid 
             if (step + 1) % args.valid == 0:
+                
+                # calculate the metrics 
                 pass
+
 
         # training with extra valid setting, use init to train
 

@@ -4,6 +4,8 @@ import pickle as pkl
 from typing import Tuple
 import json
 
+import torch
+
 from utils import dataset_utils
 
 '''Switch cases'''
@@ -30,7 +32,7 @@ class KGDataset(object):
         self.data = {}
         self.setting = setting
         self.n_ent = 0
-        self.n_rel = 0
+        self.n_rel = 0 # ! here we do not explicitly multiply this one by 2, which counts reciprocal relations
 
         # get splits setting
         try:
@@ -55,7 +57,7 @@ class KGDataset(object):
         # TODO add the debug mode
         return 
 
-    def get_triples(self, split, use_reciprocal=True):
+    def get_triples(self, split, use_reciprocal=False):
         """get triples in a split
 
         Args:
@@ -66,14 +68,21 @@ class KGDataset(object):
             examples: the data
         """
         # TODO use a switch style to implement other settings, here we only start with the active learning setting
-        examples = []
+        triples = []
 
         try:
-            examples = self.data[split]
+            triples = self.data[split] # Tensor
+
+            # add reciprocal relations
+            if use_reciprocal:
+                copy = triples.clone().detach()
+                copy[:, 0], copy[:, 1], copy[:, 2] = copy[:, 2], copy[:, 1] + self.n_rel, copy[:, 0]
+                triples = torch.cat((triples, copy), dim=0)
+            
         except KeyError:
             print(f"Current setting \"{self.setting}\" does not have the split \"{split}\"")
 
-        return examples
+        return triples 
         
 
     def get_shape(self) -> Tuple[int, int]:
