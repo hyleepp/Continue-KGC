@@ -84,12 +84,26 @@ def organize_args(args):
     '''organize args into a hierarchial style'''
     pass
 
+def prepare_logger(save_dir:str) -> None:
+    '''Prepare logger and add a stream handler'''
+    
+    # init logger
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        level=logging.INFO,
+        datefmt="%Y-%M-%d %H:%M:%S",
+        filename=os.path.join(save_dir, "run.log")
+    )
 
-''' Preparation
-'''
+    # Sync logging info to stdout
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)-8s %(message)s")
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console) # add the StreamHandler to root Logger
+    logging.info(f"Saving logs in {save_dir}")
 
-''' Train / Test
-'''
+    return
 
 def initialization(args):
     """initialize settings like logger and return dataset, optimizer and model
@@ -103,11 +117,10 @@ def initialization(args):
     
     save_dir = get_savedir(args.model, args.dataset)
 
-    '''Logging'''
-
-    # file logger
+    prepare_logger(save_dir)
 
     # tensor board
+    tb_writer = 
 
     # create dataset
     dataset_path = os.path.join(os.environ['DATA_PATH'], args.dataset)
@@ -160,20 +173,19 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
 
             # Train step
             model.train()
-            train_loss = optimizer.epoch(train_triples)
+            train_loss = optimizer.epoch(train_triples, 'train')
             logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
 
             # Valid step
             model.eval()
-            valid_loss = optimizer.calculate_valid_loss(valid_triples)
+            valid_loss = optimizer.epoch(valid_triples, 'valid')
             logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
 
             # TODO write losses
 
             # Test on valid 
             if (step + 1) % args.valid == 0:
-
-
+                pass
 
         # training with extra valid setting, use init to train
 

@@ -107,7 +107,7 @@ class KGOptimizer(nn.Module):
                     # get input batch
                     input_batch = shuffled_triples[b_begin: b_begin + self.batch_size].cuda()
 
-                    # forward and backward
+                    # forward and backward (for train)
                     if split == 'train':
                         loss = self.calculate_loss(input_batch)
                         self.optimizer.zero_grad()
@@ -128,15 +128,3 @@ class KGOptimizer(nn.Module):
 
             total_loss /= counter
         return total_loss
-
-    def calculate_valid_loss(self, triples: Tensor):
-
-        b_begin = 0
-        loss = 0
-        counter = 0
-
-        with torch.no_grad():
-            while b_begin < triples.shape[0]:
-                input_batch = triples[b_begin, b_begin + self.batch_size].cuda()
-                
-                b_begin += self.batch_size
