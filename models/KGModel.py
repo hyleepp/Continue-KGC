@@ -22,8 +22,9 @@ class KGModel(nn.Module, ABC):
 
         return 
    
+   # TODO murge the following two function
     @abstractmethod
-    def get_embeddings(self, triples: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def encode(self, triples: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """triples, one-hot vectors (h, r, t) -> embeddings, dense vectors
 
         Args:
@@ -34,27 +35,71 @@ class KGModel(nn.Module, ABC):
             
         """
         pass
-    
+
     @abstractmethod
-    def score_func(self, emb_h: Tensor, emb_r: Tensor, emb_t: Tensor, eval_model=False) -> Tensor:
+    def get_all_embeddings(self) -> Tuple:
+        """return embeddings of all entities and relations, which is used on evaluation 
+
+        Returns:
+            Tuple: (emb_e, emb_r)
+        """
+        pass
+    
+    def decode(self, triples, emb_e, emb_r, eval_mode=False) -> Tensor:
         """calculate the score based on embeddings 
 
         Args:
-            emb_h (Tensor): the embeddings of head entities 
+            triples(Tensor): (BS x 3)
+            emb_e (Tensor): the embeddings of all entities 
             emb_r (Tensor): the embeddings of relations
-            emb_t (Tensor): the embeddings of tail entities
             eval_mode(Bool): use eval mode, means each (h, r) pair matches all candidate entities 
 
         Returns:
             Tensor: the score of each triple
+                    if eval mode is False, then return (BS x 1)
+                    else return (BS x N_ent)
+        """
+        emb_queries = self.get_queries(triples, emb_e, emb_r)
+        emb_candidates = self.get_candidates(triples, emb_e, emb_r, eval_mode)
+
+        scores = self.score(emb_queries, emb_candidates, eval_mode)
+
+        return scores
+        
+
+    @abstractmethod
+    def get_queries(self, triples, emb_e, emb_r) -> Tensor:
+        """give embeddings of queries (h,r), return a vector, like (h + r)
+
+        Args:
+            triples (_type_): the given (h, r, t) triples
+            emb_e (_type_): the embeddings of all entities after encoding 
+            emb_r (_type_): the embeddings of all relations after encoding 
+
+        Returns:
+            Tensor: results of f(h, r), like translation
         """
         pass
+
+    @abstractmethod
+    def get_candidates(self, triples, emb_e) -> Tensor:
+        """give the tail entities for corresponding triples
+
+        Args:
+            triples (_type_): the given (h, r, t) triples
+            emb_e (_type_): the embeddings of all entities
+
+        Returns:
+            Tensor: the embedding of tail entities
+        """
+        pass
+
 
     def get_reg(self, triples: Tensor) -> Tensor:
         """calculate the regularization terms
 
         Args:
-            triples (Tensor): input tirples.
+            triples (Tensor): input triples.
 
         Returns:
             Tensor: the reg terms
@@ -75,12 +120,55 @@ class KGModel(nn.Module, ABC):
         """
 
         # triples -> embedding (may contains an extra encoder like gnn)
-        emb_h, emb_r, emb_t = self.get_embeddings(triples)
+        emb_h, emb_r = self.encode(triples)
         # embedding -> score
-        scores = self.score_func(emb_h, emb_r, emb_t, eval_mode)
+        scores = self.decode(triples, emb_h, emb_r, eval_mode)
         
         # get regularization terms
         reg = self.get_reg(triples)
 
         return scores, reg
+    
+    def calculate_metrics(self, triples: Tensor, filters: dict, batch_size=500) -> Tuple:
+
+        # do we need filter? or we just need sth else?
+        # here we just neededk
+
+        mean_rank = {}
+        mean_reciprocal_rank = {}
+        hits_at = {}
+
+        for m in ["rhs", "lhs"]:
+            q = triples.clone()
+            if m == "lhs":
+                q[:, 0], q[:, 1], q[:, 2] = q[:, 2], q[:, 1] + self.n_rel, q[:, 0]
+                # get ranking
+
+        pass
+
+
+    def get_ranking(self, triples, filter, batch_size):
+
+        ranks = torch.ones(len(triples)) # default to be 1
+
+        with torch.no_grad():
+            
+            b_begin = 0
+            emb_e, emb_r = self.encode() # distance/bilinear based just simply get the embeddings while gnn needs to forward on graph
+            candidates = self.get_candidates(triples, emb_e, eval_mode=True) # get embeddings of all candidates
+            # ? there may have unseen entities, which should be filtered
+
+            while b_begin < len(triples):
+                batch_triples = triples[b_begin: b_begin + batch_size].cuda()
+
+                queries = self.get_queries(batch_triples, emb_e)
+                true_candidates = self.get_candidates(batch_triples, emb_e, eval_model=False)
+
+                scores = self.score_func
+
+                scores = self.score_func(q, ) 
+        
+    def score(self, lhs, rhs)
+
+
         

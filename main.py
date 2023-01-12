@@ -132,7 +132,7 @@ def initialization(args):
     prepare_logger(save_dir)
 
     # tensor board
-    tb_writer = SummaryWriter(save_dir, flush_secs=5)
+    writer = SummaryWriter(save_dir, flush_secs=5)
 
     # create dataset
     dataset_path = os.path.join(os.environ['DATA_PATH'], args.dataset)
@@ -159,10 +159,10 @@ def initialization(args):
     optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate)
     optimizer = KGOptimizer(model, optim_method, regularizer, args.neg_size, args.sta_scale, debug=args.debug)
 
-    return dataset, model, optimizer
+    return dataset, model, optimizer, writer
     
 
-def active_learning_running(dataset, model, optimizer, expected_completion_ratio, need_pretrain=False) -> None:
+def active_learning_running(dataset, model, optimizer, writer, expected_completion_ratio, need_pretrain=False) -> None:
 
     # Data Loading
     init_triples = dataset.get_example('init', use_reciprocal=True) # here we consider training is default to use reciprocal setting
@@ -181,7 +181,8 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
         train_count = int(len(init_triples) * args.train_ratio)
         train_triples, valid_triples = init_triples[:train_count], init_triples[train_count:]
 
-        # pretraining
+        # pretraining only on training_set, to make sure the performance of the current setting
+        # may be jumped
         for step in range(args.max_epochs):
 
             # Train step
@@ -194,16 +195,18 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
             valid_loss = optimizer.epoch(valid_triples, 'valid')
             logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
 
-            # TODO write losses
+            # write losses 
+            writer.add_scaler('train_loss', train_loss, step)
+            writer.add_scaler('valid_loss', valid_loss, step)
 
             # Test on valid 
             if (step + 1) % args.valid == 0:
                 
                 # calculate the metrics 
+                # TODO continue here
                 pass
 
-
-        # training with extra valid setting, use init to train
+        # pretrain with all init triples
 
         # save the trained model
     else:
@@ -230,5 +233,9 @@ def active_learning_running(dataset, model, optimizer, expected_completion_ratio
 if __name__ == "__main__":
     args = prepare_parser()
     # args = organize_args(args) # TODO finish that 
-    dataset, model, optimizer = initialization(args)
+    dataset, model, optimizer, writer = initialization(args)
+
+    # switch cases
+    if args.setting == 'active_learning':
+        pass
     
