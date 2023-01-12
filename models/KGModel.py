@@ -36,15 +36,6 @@ class KGModel(nn.Module, ABC):
         """
         pass
 
-    @abstractmethod
-    def get_all_embeddings(self) -> Tuple:
-        """return embeddings of all entities and relations, which is used on evaluation 
-
-        Returns:
-            Tuple: (emb_e, emb_r)
-        """
-        pass
-    
     def decode(self, triples, emb_e, emb_r, eval_mode=False) -> Tensor:
         """calculate the score based on embeddings 
 
@@ -65,7 +56,30 @@ class KGModel(nn.Module, ABC):
         scores = self.score(emb_queries, emb_candidates, eval_mode)
 
         return scores
-        
+    
+    @abstractmethod
+    def score(self, emb_queries, emb_candidates, eval_mode=False) -> Tensor:
+        """calculate the scores given the embeddings of queries and candidates
+
+        Args:
+            emb_queries (_type_): the embeddings of queries 
+            emb_candidates (_type_): the embedding of candidates
+            eval_mode (bool, optional): 1-1 or 1-n_ent. Defaults to False.
+
+        Returns:
+            Tensor: if eval mode is True return shape(BS x 1), else return shape(BS x N_ent)
+        """
+        pass
+
+
+    @abstractmethod
+    def get_all_embeddings(self) -> Tuple:
+        """return embeddings of all entities and relations, which is used on evaluation 
+
+        Returns:
+            Tuple: (emb_e, emb_r)
+        """
+        pass
 
     @abstractmethod
     def get_queries(self, triples, emb_e, emb_r) -> Tensor:
@@ -147,7 +161,19 @@ class KGModel(nn.Module, ABC):
         pass
 
 
-    def get_ranking(self, triples, filter, batch_size):
+    def get_ranking(self, triples, filter, batch_size) -> Tensor:
+        """calculate the rank of the tail entity againist all candidate entities for each triple 
+
+        Args:
+            triples (_type_): triples
+            filter (_type_): what is already true in KG, to get the filtered results
+            batch_size (_type_): _description_
+
+        Returns:
+            _type_: (BS x 1) the rank of all triples
+        """
+
+        # TODO add filter related parts 
 
         ranks = torch.ones(len(triples)) # default to be 1
 
@@ -155,20 +181,38 @@ class KGModel(nn.Module, ABC):
             
             b_begin = 0
             emb_e, emb_r = self.encode() # distance/bilinear based just simply get the embeddings while gnn needs to forward on graph
-            candidates = self.get_candidates(triples, emb_e, eval_mode=True) # get embeddings of all candidates
+            all_candidates = self.get_candidates(triples, emb_e, eval_mode=True) # get embeddings of all candidates
             # ? there may have unseen entities, which should be filtered
 
             while b_begin < len(triples):
                 batch_triples = triples[b_begin: b_begin + batch_size].cuda()
 
+                # get embeddings
                 queries = self.get_queries(batch_triples, emb_e)
-                true_candidates = self.get_candidates(batch_triples, emb_e, eval_model=False)
+                target_candidates = self.get_candidates(batch_triples, emb_e, eval_model=False)
+                
+                all_scores = self.score(queries, target_candidates, eval_mode=True)
+                target_scores = self.score(queries, all_candidates, eval_mode=False) 
 
-                scores = self.score_func
+                # TODO filter part
+                # here we just simply filter out the target itself
+                # give the true and filer a huge negative number to ignore it
+                # TODO test this function
+                for i, triples in enumerate(triples):
+                    _, _, target = triples
+                    all_scores[i, target] = -1e6 # 
 
-                scores = self.score_func(q, ) 
+                ranks[b_begin:b_begin + batch_size] += torch.sum(
+                    (all_scores >= target_scores).float(), dim=1
+                ).cpu() # 
+                b_begin += batch_size
+            
+        return ranks
+
+
+
+
         
-    def score(self, lhs, rhs)
 
 
         
