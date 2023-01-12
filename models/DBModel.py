@@ -20,18 +20,34 @@ class DBModel(KGModel):
 
         # naive version of embeddings
         self.emb_ent = nn.Embedding(self.n_ent, self.hidden_size)
-        self.emb_rel = nn.Embedding(self.n_rel, self.hidden_size)
+        self.emb_rel = nn.Embedding(self.n_rel * 2, self.hidden_size) # introduce reciprocal relations
+        self.similarity_method = 'dist' # or dot 
 
         return
     
+    def get_candidates(self, triples, emb_e) -> Tensor:
+
+        t = triples[:, 2]
+        candidates = emb_e[t]
+        
+        return candidates
     
-    def get_embeddings(self, triples: ndarray) -> Tensor:
+    def encode(self, triples: Tensor) -> Tensor:
 
-        emb_h = self.emb_ent[triples[0]]
-        emb_r = self.emb_rel[triples[1]]
-        emb_t = self.emb_ent[triples[2]]
+        # we do not need this part, it is used in GNN based models
+        return self.emb_ent, self.emb_rel
 
-        return emb_h, emb_r, emb_t
+    def score(self, emb_queries, emb_candidates, eval_mode=False) -> Tensor:
+
+        # TODO continue here
+        if self.similarity_method == 'dist':
+            score = - euc_distance(emb_queries, emb_candidates, eval_mode)
+        elif self.similarity_method == 'dot':
+            score = emb_queries @ emb_candidates.transpose(0, 1) if eval_mode \
+                    else torch.sum(emb_queries * emb_candidates, dim=-1, keepdim=True)
+
+        else:
+            raise KeyError(f"The given method {self.similarity_method} is not implemented.")
 
     # both score_func and get_reg are need to be implemented in child classes
 
@@ -40,8 +56,12 @@ class TransE(DBModel):
     
     def __init__(self, args) -> None:
         super().__init__(args)
-        
-    def score_func(self, emb_h: Tensor, emb_r: Tensor, emb_t: Tensor, eval_mode=False) -> Tensor:
-        emb_lhs = emb_h + emb_r
-        return - euc_distance(emb_lhs, emb_t, eval_mode)
+
+    def get_queries(self, triples, emb_e, emb_r) -> Tensor:
+
+        h = emb_e[triples[:, 0]]
+        r = emb_r[triples[:, 1]]
+
+        return h + r
+    
     
