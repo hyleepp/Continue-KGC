@@ -144,9 +144,18 @@ class KGModel(nn.Module, ABC):
         return scores, reg
     
     def calculate_metrics(self, triples: Tensor, filters: dict, batch_size=500) -> Tuple:
+        """calculate metrics given the triples 
 
-        # do we need filter? or we just need sth else?
-        # here we just neededk
+        Args:
+            triples (Tensor): input triples
+            filters (dict): Dict with entities to skip per query for evaluation in the filtered setting
+            batch_size (int, optional): literally. Defaults to 500.
+
+        Returns:
+            Tuple: mean ranks, mean reciprocal ranks, and hits@k (1, 3 10)
+        """
+
+        # TODO add filters
 
         mean_rank = {}
         mean_reciprocal_rank = {}
@@ -157,8 +166,14 @@ class KGModel(nn.Module, ABC):
             if m == "lhs":
                 q[:, 0], q[:, 1], q[:, 2] = q[:, 2], q[:, 1] + self.n_rel, q[:, 0]
                 # get ranking
+                ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
+                mean_ranks = torch.mean(ranks).item()
+                mean_reciprocal_rank = torch.mean(1. / ranks).item()
+                hits_at[m] = torch.FloatTensor((list(map(
+                    lambda x: torch.mean((ranks <= x).float()).item(), [1, 3, 10]
+                ))))
 
-        pass
+        return mean_rank, mean_reciprocal_rank, hits_at
 
 
     def get_ranking(self, triples, filter, batch_size) -> Tensor:
@@ -211,8 +226,3 @@ class KGModel(nn.Module, ABC):
 
 
 
-
-        
-
-
-        

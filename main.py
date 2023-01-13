@@ -201,6 +201,7 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
 
             # Test on valid 
             if (step + 1) % args.valid == 0:
+                model.compute_metrics
                 
                 # calculate the metrics 
                 # TODO continue here
@@ -237,5 +238,5 @@ if __name__ == "__main__":
 
     # switch cases
     if args.setting == 'active_learning':
-        pass
+        active_learning_running(dataset, model, optimizer, writer)
     
