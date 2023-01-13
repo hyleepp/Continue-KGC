@@ -14,6 +14,7 @@
             "args": [
                 "--dataset", "WN18",
                 "--model", "TransE",
+                "--setting", "active_learning"
             ]
         }
     ]

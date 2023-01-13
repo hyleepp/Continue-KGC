@@ -71,16 +71,6 @@ class KGModel(nn.Module, ABC):
         """
         pass
 
-
-    @abstractmethod
-    def get_all_embeddings(self) -> Tuple:
-        """return embeddings of all entities and relations, which is used on evaluation 
-
-        Returns:
-            Tuple: (emb_e, emb_r)
-        """
-        pass
-
     @abstractmethod
     def get_queries(self, triples, emb_e, emb_r) -> Tensor:
         """give embeddings of queries (h,r), return a vector, like (h + r)

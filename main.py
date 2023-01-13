@@ -79,7 +79,7 @@ def prepare_parser():
         "--expected_completion_ratio", type=float, default=0.99, help= "when the completion can be treated as almost done"
     )
     parser.add_argument(
-        "--setting", type=str, choices=['active_learning'], help='which setting in KG'
+        "--setting", type=str, required=True, choices=['active_learning'], help='which setting in KG'
     )
     parser.add_argument(
         "--debug", action="store_true", help='whether or not debug the program'
@@ -243,7 +243,7 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
 if __name__ == "__main__":
 
     set_environ()
-    
+
     args = prepare_parser()
     # args = organize_args(args) # TODO finish that 
     dataset, model, optimizer, writer = initialization(args)
