@@ -19,8 +19,17 @@ from dataset.KGDataset import KGDataset
 
 ''' Parser
 '''
-def prepare_parser():
+def set_environ():
+    '''set some environment configs'''
 
+    os.environ['KGHOME'] = "./"
+    os.environ['LOG_DIR'] = "logs"
+    os.environ['DATA_PATH'] = 'data'
+
+    return 
+
+def prepare_parser():
+    
     parser = argparse.ArgumentParser(
         description="setting for ACKGE"
     )
@@ -47,7 +56,7 @@ def prepare_parser():
         "--max_epochs", type=int, default=200, help='training epochs'
     )
     parser.add_argument(
-        "--need_pretrain", type=bool, action="store true", help="need pretrain in the init split?"
+        "--need_pretrain", action="store_true", help="need pretrain in the init split?"
     )
     parser.add_argument(
         "--pretrain_learning_rate", type=float, default=1e-3, help='learning rate for pretraining'
@@ -73,7 +82,7 @@ def prepare_parser():
         "--setting", type=str, choices=['active_learning'], help='which setting in KG'
     )
     parser.add_argument(
-        "--debug", type=bool, action="store_true", help='whether or not debug the program'
+        "--debug", action="store_true", help='whether or not debug the program'
     )
     parser.add_argument(
         "--device", type=str, choices=['cpu', 'cuda'], help="which device, cpu or cuda"
@@ -232,6 +241,9 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
 
 
 if __name__ == "__main__":
+
+    set_environ()
+    
     args = prepare_parser()
     # args = organize_args(args) # TODO finish that 
     dataset, model, optimizer, writer = initialization(args)

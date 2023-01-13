@@ -6,8 +6,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor 
 
-from KGModel import KGModel
-from utils.calculation import euc_distance
+from .KGModel import KGModel
+from .utils.calculation import euc_distance
 
 DISTANCE_MODELS = ['TransE']
 BILINEAR_MODELS = ['RESCAL']

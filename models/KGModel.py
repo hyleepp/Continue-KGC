@@ -167,7 +167,7 @@ class KGModel(nn.Module, ABC):
                 q[:, 0], q[:, 1], q[:, 2] = q[:, 2], q[:, 1] + self.n_rel, q[:, 0]
                 # get ranking
                 ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
-                mean_ranks = torch.mean(ranks).item()
+                mean_rank = torch.mean(ranks).item()
                 mean_reciprocal_rank = torch.mean(1. / ranks).item()
                 hits_at[m] = torch.FloatTensor((list(map(
                     lambda x: torch.mean((ranks <= x).float()).item(), [1, 3, 10]

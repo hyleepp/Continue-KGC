@@ -6,7 +6,7 @@ import json
 
 import torch
 
-from utils import dataset_utils
+from .utils import dataset_utils
 
 '''Switch cases'''
 SETTING2SPLITS = {
