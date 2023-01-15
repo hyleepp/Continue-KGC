@@ -1,0 +1,30 @@
+2023-02-13 22:02:04 INFO     Saving logs in logs/01_13/WN18/TransE_22_02_04
+2023-02-13 22:02:04 INFO     active_num = 1000
+2023-02-13 22:02:04 INFO     batch_size = 500
+2023-02-13 22:02:04 INFO     counter = 10
+2023-02-13 22:02:04 INFO     dataset = WN18
+2023-02-13 22:02:04 INFO     debug = False
+2023-02-13 22:02:04 INFO     device = cuda
+2023-02-13 22:02:04 INFO     dyn_scale = False
+2023-02-13 22:02:04 INFO     expected_completion_ratio = 0.99
+2023-02-13 22:02:04 INFO     hidden_size = 200
+2023-02-13 22:02:04 INFO     incremental_learning_rate = 0.001
+2023-02-13 22:02:04 INFO     max_epochs = 200
+2023-02-13 22:02:04 INFO     model = TransE
+2023-02-13 22:02:04 INFO     n_ent = 40943
+2023-02-13 22:02:04 INFO     n_rel = 18
+2023-02-13 22:02:04 INFO     need_pretrain = True
+2023-02-13 22:02:04 INFO     neg_size = -1
+2023-02-13 22:02:04 INFO     optimizer = Adam
+2023-02-13 22:02:04 INFO     pretrain_learning_rate = 0.001
+2023-02-13 22:02:04 INFO     reg_weight = 0
+2023-02-13 22:02:04 INFO     regularizer = F2
+2023-02-13 22:02:04 INFO     setting = active_learning
+2023-02-13 22:02:04 INFO     sta_scale = 1
+2023-02-13 22:02:04 INFO     train_ratio = 0.9
+2023-02-13 22:02:04 INFO     valid_period = 5
+2023-02-13 22:02:04 INFO     	 Loading WN18 in active_learning setting, with shape (40943, 18)
+2023-02-13 22:02:06 INFO     Total number of parameters 8195800
+2023-02-13 22:02:06 INFO     	 Start Init Training.
+2023-02-13 22:02:10 INFO     	 Epoch 0 | average train loss: 1.0000
+2023-02-13 22:02:10 INFO     	 Epoch 0 | average valid loss: 1.0000

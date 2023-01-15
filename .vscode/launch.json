@@ -14,7 +14,8 @@
             "args": [
                 "--dataset", "WN18",
                 "--model", "TransE",
-                "--setting", "active_learning"
+                "--setting", "active_learning",
+                "--need_pretrain",
             ]
         }
     ]

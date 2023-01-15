@@ -14,7 +14,7 @@ from models import ALL_MODELS
 from optimization.KGOptimizer import KGOptimizer
 from optimization import Regularizer
 from optimization.Regularizer import ALL_REGULARIZER
-from utils.train import get_savedir, count_param
+from utils.train import get_savedir, count_param, avg_both
 from dataset.KGDataset import KGDataset
 
 ''' Parser
@@ -47,6 +47,18 @@ def prepare_parser():
     parser.add_argument(
         "--reg_weight", type=float, default=0, help='the weight of reg term'
     )
+    parser.add_argument(
+        "--hidden_size", type=int, default=200, help="hidden dimension of embedding models"
+    )
+    parser.add_argument(
+        "--optimizer", type=str, default="Adam", choices=["Adam, Adagrad"], help="optimizer"
+    )
+    parser.add_argument(
+        "--sta_scale", type=float, default=1, help="scale factor in loss function"
+    )
+    parser.add_argument(
+        "--dyn_scale", action="store_true", help="whether or not add a learnable factor"
+    )
 
     '''Pretrain Part '''
     parser.add_argument(
@@ -59,6 +71,9 @@ def prepare_parser():
         "--need_pretrain", action="store_true", help="need pretrain in the init split?"
     )
     parser.add_argument(
+        "--neg_size", type=int, default=-1, help="if -1, means not use negative sample, else means the size of negative sample"
+    )
+    parser.add_argument(
         "--pretrain_learning_rate", type=float, default=1e-3, help='learning rate for pretraining'
     )
     parser.add_argument(
@@ -66,6 +81,12 @@ def prepare_parser():
     )
     parser.add_argument(
         "--valid_period", type=int, default=5, help="how often test performance on valid set"
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=500, help="batch size"
+    )
+    parser.add_argument(
+        "--patient", type=int, default=10, help="how many evaluation before early stopping"
     )
 
     '''Incremental Part''' 
@@ -85,7 +106,7 @@ def prepare_parser():
         "--debug", action="store_true", help='whether or not debug the program'
     )
     parser.add_argument(
-        "--device", type=str, choices=['cpu', 'cuda'], help="which device, cpu or cuda"
+        "--device", type=str, default='cuda', choices=['cpu', 'cuda'], help="which device, cpu or cuda"
     )
 
     return parser.parse_args()
@@ -127,7 +148,7 @@ def save_config(args, save_dir) -> None:
     return
 
 def initialization(args):
-    """initialize settings like logger and return dataset, optimizer and model
+    """initialize logger, dataset, writer, then return dataset, model and writer
 
     Args:
         args (dict): arguments
@@ -137,6 +158,7 @@ def initialization(args):
     """
     
     save_dir = get_savedir(args.model, args.dataset)
+    args.save_dir = save_dir # which will be used further
 
     prepare_logger(save_dir)
 
@@ -146,14 +168,14 @@ def initialization(args):
     # create dataset
     dataset_path = os.path.join(os.environ['DATA_PATH'], args.dataset)
     dataset = KGDataset(dataset_path, args.setting, args.debug)
+    args.n_ent, args.n_rel = dataset.get_shape() # add shape to args
 
     # save configs 
     save_config(args, save_dir)
 
     # Load data, default for active learning
-    logging.info(f"\t Loading {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape)}")
+    logging.info(f"\t Loading {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape())}")
 
-    # TODO add info
     # TODO ce_weight
 
     # create model
@@ -163,19 +185,14 @@ def initialization(args):
     device = args.device
     model.to(device)
 
-    # get optimizer
-    regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
-    optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.learning_rate)
-    optimizer = KGOptimizer(model, optim_method, regularizer, args.neg_size, args.sta_scale, debug=args.debug)
-
-    return dataset, model, optimizer, writer
+    return dataset, model, writer
     
 
-def active_learning_running(dataset, model, optimizer, writer, expected_completion_ratio, need_pretrain=False) -> None:
+def active_learning_running(args, dataset, model, writer) -> None:
 
     # Data Loading
-    init_triples = dataset.get_example('init', use_reciprocal=True) # here we consider training is default to use reciprocal setting
-    unexplored_triples = dataset.get_example('unexplored', use_reciprocal=False)
+    init_triples = dataset.get_triples('init', use_reciprocal=True) # here we consider training is default to use reciprocal setting
+    unexplored_triples = dataset.get_triples('unexplored', use_reciprocal=False)
 
     # Init Training
     early_stop_counter = 0
@@ -184,14 +201,23 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
     # TODO add other cases 
     logging.info("\t Start Init Training.")
 
+    if args.need_pretrain:
+        # Get optimizer
+        regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
+        optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.pretrain_learning_rate)
+        optimizer = KGOptimizer(model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
 
-    if need_pretrain:
         # seprate the init set into training and eval set
         train_count = int(len(init_triples) * args.train_ratio)
         train_triples, valid_triples = init_triples[:train_count], init_triples[train_count:]
 
+        # TODO build filters
+        filters = None
+
         # pretraining only on training_set, to make sure the performance of the current setting
+
         # may be jumped
+        logging.info("\t Start pretraining stage 1: on training split.")
         for step in range(args.max_epochs):
 
             # Train step
@@ -205,18 +231,44 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
             logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
 
             # write losses 
-            writer.add_scaler('train_loss', train_loss, step)
-            writer.add_scaler('valid_loss', valid_loss, step)
+            writer.add_scalar('train_loss', train_loss, step)
+            writer.add_scalar('valid_loss', valid_loss, step)
 
             # Test on valid 
-            if (step + 1) % args.valid == 0:
-                model.compute_metrics
+            if (step + 1) % args.valid_period == 0:
+
+                valid_metrics = model.calculate_metrics(valid_triples, filters)
+                valid_metrics = avg_both(valid_metrics)
+
+                valid_mrr = valid_metrics['MRR']
+                if not best_mrr or valid_mrr > best_mrr:
+                    best_mrr = valid_mrr
+                    counter = 0
+                    best_epoch = step
+
+                    logging.info(f"\t Saving model at epoch {step} in {args.save_dir}")
+                    torch.save(model.cpu().state_dict(), os.path.join(args.save_dir))
+                    model.cuda()
+                else:
+                    counter += 1
+                    if counter == args.patient:
+                        logging.info("\t Early stopping.")
+                        break
+        logging.info("\t Pretrain stage 1 finished Optimization finished")
+
+        # Load previous best model, and further train based on it
+
+        logging.info("\t Load ")
+
+        
+
+                
                 
                 # calculate the metrics 
-                # TODO continue here
                 pass
 
         # pretrain with all init triples
+        print("Training with extra validation data.")
 
         # save the trained model
     else:
@@ -227,7 +279,7 @@ def active_learning_running(dataset, model, optimizer, writer, expected_completi
     # continue active completion
     completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))
 
-    while completion_ratio < expected_completion_ratio:
+    while completion_ratio < args.expected_completion_ratio:
         # prediction
 
         # incremental training
@@ -246,9 +298,10 @@ if __name__ == "__main__":
 
     args = prepare_parser()
     # args = organize_args(args) # TODO finish that 
-    dataset, model, optimizer, writer = initialization(args)
+    # TODO use not all args, but the specific part of args like args.base
+    dataset, model, writer = initialization(args)
 
     # switch cases
     if args.setting == 'active_learning':
-        active_learning_running(dataset, model, optimizer, writer)
+        active_learning_running(args, dataset, model, writer)
     

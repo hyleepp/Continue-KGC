@@ -16,33 +16,38 @@ class KGModel(nn.Module, ABC):
 
     def __init__(self, args) -> None: # here we use args is because we need to implement various of models that need different params
         super().__init__()
+
         self.n_ent = args.n_ent
         self.n_rel = args.n_rel
         self.hidden_size = args.hidden_size
+
+        # naive version of embeddings
+        self.emb_ent = nn.Embedding(self.n_ent, self.hidden_size, device=args.device)
+        self.emb_rel = nn.Embedding(self.n_rel * 2, self.hidden_size, device=args.device) # introduce reciprocal relations
 
         return 
    
    # TODO murge the following two function
     @abstractmethod
-    def encode(self, triples: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def encode(self, triples: Tensor) -> Tuple[Tensor, Tensor]:
         """triples, one-hot vectors (h, r, t) -> embeddings, dense vectors
 
         Args:
             triples (Tensor): one hot vectors
         
         Returns:
-            Tensor: the embeddings of all entities and relations in triples
-            
+            Tensor: the embeddings of **all** entities and relations in triples, since if we use a graph, we update all the graph (or a sub graoh)
+                    In other word, return emb_e (N_ent, d), emb_R (N_rel, d)
         """
         pass
 
-    def decode(self, triples, emb_e, emb_r, eval_mode=False) -> Tensor:
+    def decode(self, triples, enc_e, enc_r, eval_mode=False) -> Tensor:
         """calculate the score based on embeddings 
 
         Args:
             triples(Tensor): (BS x 3)
-            emb_e (Tensor): the embeddings of all entities 
-            emb_r (Tensor): the embeddings of relations
+            enc_e (Tensor): the embeddings of all entities after encoding
+            enc_r (Tensor): the embeddings of relations after encoding
             eval_mode(Bool): use eval mode, means each (h, r) pair matches all candidate entities 
 
         Returns:
@@ -50,20 +55,20 @@ class KGModel(nn.Module, ABC):
                     if eval mode is False, then return (BS x 1)
                     else return (BS x N_ent)
         """
-        emb_queries = self.get_queries(triples, emb_e, emb_r)
-        emb_candidates = self.get_candidates(triples, emb_e, emb_r, eval_mode)
+        v_queries = self.get_queries(triples, enc_e, enc_r)
+        v_candidates = self.get_candidates(triples, enc_e, eval_mode)
 
-        scores = self.score(emb_queries, emb_candidates, eval_mode)
+        scores = self.score(v_queries, v_candidates, eval_mode)
 
         return scores
     
     @abstractmethod
-    def score(self, emb_queries, emb_candidates, eval_mode=False) -> Tensor:
-        """calculate the scores given the embeddings of queries and candidates
+    def score(self, v_queries, v_candidates, eval_mode=False) -> Tensor:
+        """calculate the scores given the vectors of queries and candidates
 
         Args:
-            emb_queries (_type_): the embeddings of queries 
-            emb_candidates (_type_): the embedding of candidates
+            emb_queries (_type_): the vectors of queries 
+            emb_candidates (_type_): the vectors of candidates
             eval_mode (bool, optional): 1-1 or 1-n_ent. Defaults to False.
 
         Returns:
@@ -72,43 +77,50 @@ class KGModel(nn.Module, ABC):
         pass
 
     @abstractmethod
-    def get_queries(self, triples, emb_e, emb_r) -> Tensor:
-        """give embeddings of queries (h,r), return a vector, like (h + r)
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        """give results of queries (h,r), return a vector, like (h + r), given the encoded embeddings of entities and relations
 
         Args:
             triples (_type_): the given (h, r, t) triples
-            emb_e (_type_): the embeddings of all entities after encoding 
-            emb_r (_type_): the embeddings of all relations after encoding 
+            enc_e (_type_): the embeddings of all entities after encoding after encoding
+            enc_r (_type_): the embeddings of all relations after encoding after encoding
 
         Returns:
             Tensor: results of f(h, r), like translation
         """
         pass
 
-    @abstractmethod
-    def get_candidates(self, triples, emb_e) -> Tensor:
+    def get_candidates(self, triples, enc_e, eval_mode) -> Tensor:
         """give the tail entities for corresponding triples
 
         Args:
-            triples (_type_): the given (h, r, t) triples
-            emb_e (_type_): the embeddings of all entities
+            enc_e (_type_): embedding of all entities after encoding
+            eval_mode (_type_): return the corresponding embeddings (BS x 1) or the embeddings of all candidate entities (N_ent x 1)
 
         Returns:
-            Tensor: the embedding of tail entities
+            Tensor: the embedding of tail or all entities
         """
-        pass
+
+        # TODO filter out the entities that do not envolved, which is essential for continue activate learning
+        if not eval_mode:
+            return enc_e[triples[:, 2]]
+        else:
+            return self.emb_ent.weight # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
 
 
-    def get_reg(self, triples: Tensor) -> Tensor:
-        """calculate the regularization terms
+
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+        """get the materials tha are needed for calculating the regularization terms
 
         Args:
             triples (Tensor): input triples.
+            emb_e (_type_): the embeddings of all entities after encoding 
+            emb_r (_type_): the embeddings of all relations after encoding 
 
         Returns:
             Tensor: the reg terms
         """
-        return 0 # the default setting, without reg
+        return enc_e[triples[:, 0]], enc_r[triples[:, 1]], enc_e[triples[:, 2]] # the default setting, vectors of h, r, t
 
 
     def forward(self, triples: Tensor, eval_mode=False) -> Tuple[Tensor, Tensor]:
@@ -123,15 +135,14 @@ class KGModel(nn.Module, ABC):
             reg: reg terms
         """
 
-        # triples -> embedding (may contains an extra encoder like gnn)
-        emb_h, emb_r = self.encode(triples)
+        enc_e, enc_r = self.encode(triples) # it should be noticed that emb_e
         # embedding -> score
-        scores = self.decode(triples, emb_h, emb_r, eval_mode)
+        scores = self.decode(triples, enc_e, enc_r, eval_mode)
         
         # get regularization terms
-        reg = self.get_reg(triples)
+        reg_factor = self.get_reg_factor(triples, enc_e, enc_r)
 
-        return scores, reg
+        return scores, reg_factor
     
     def calculate_metrics(self, triples: Tensor, filters: dict, batch_size=500) -> Tuple:
         """calculate metrics given the triples 
@@ -152,9 +163,13 @@ class KGModel(nn.Module, ABC):
         hits_at = {}
 
         for m in ["rhs", "lhs"]:
-            q = triples.clone()
+            q = triples.clone().detach()
             if m == "lhs":
-                q[:, 0], q[:, 1], q[:, 2] = q[:, 2], q[:, 1] + self.n_rel, q[:, 0]
+                tmp = q[:, 0]
+                q[:, 0] = q[:, 2]
+                q[:, 2] = tmp
+                q[:, 1] = q[:, 1] = self.n_rel
+                
                 # get ranking
                 ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
                 mean_rank = torch.mean(ranks).item()

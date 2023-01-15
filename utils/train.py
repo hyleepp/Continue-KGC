@@ -18,10 +18,29 @@ def count_param(model) -> int:
     total = 0
 
     for x in model.parameters():
-        if x.required_grid:
+        if x.requires_grad:
             res = 1
             for y in x.shape:
                 res *= y
             total += res
     
     return total
+
+def avg_both(mrs, mrrs, hits) -> dict:
+    """average metrics in both direction
+
+    Args:
+        mrs (_type_): mean rank
+        mrrs (_type_): mean reciprocal rank
+        hits (_type_): hits @ 1, 3, 10
+
+    Returns:
+        dict: a dict that contains the averaged results
+    """
+
+    mr = (mrs['lhs'] + mrs['rhs']) / 2
+    mrr = (mrrs['lhs'] + mrrs['rhs']) / 2
+    hit = (hits['lhs'] + hits['rhs']) / 2
+    
+    return {'MR': mr, "MRR": mrr, 'hits@{1,3,10}': hit}
+

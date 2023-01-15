@@ -46,39 +46,43 @@ class KGOptimizer(nn.Module):
 
         
         if self.neg_size == -1:
-            loss, reg = self.neg_sample_loss(triples)
-        else:
             loss, reg = self.no_neg_sample_loss(triples)
-        pass
+        else:
+            loss, reg = self.neg_sample_loss(triples)
+
+        # calculate reg 
+        reg = self.regularizer(reg)
+        
+        return loss 
 
     def neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
         '''The Loss based on negative sample'''
         
         # positive loss 
-        positive_scores, reg = self.model(triples)
+        positive_scores, reg_factor = self.model(triples)
         positive_scores *= self.sta_scale * self.dyn_scale
         positive_scores = F.logsigmoid(positive_scores)
 
         # negative loss 
         negative_samples = self.get_negative_samples(triples)
-        negative_scores, _ = self.model(triples)
+        negative_scores, _ = self.model(negative_samples)
         negative_scores *= self.sta_scale * self.dyn_scale
         negative_scores = F.logsigmoid(- negative_scores)
 
         # total loss 
         loss = - torch.cat([positive_scores, negative_scores], dim=0).mean()
         
-        return loss, reg 
+        return loss, reg_factor
     
     def no_neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
         '''The loss caluctae without negative sample, like CE'''
 
-        predictions, reg = self.model(triples, eval_mode=True)
+        predictions, reg_factor = self.model(triples, eval_mode=True)
         truth = triples[:, 2]
 
         loss = self.loss_fn(predictions, truth) # TODO add other losses
 
-        return loss, reg
+        return loss, reg_factor
 
 
     def epoch(self, triples: Tensor, split: str) -> Tensor:
@@ -86,19 +90,19 @@ class KGOptimizer(nn.Module):
 
         Args:
             triples (Tensor): training triples in shape (N_train x 3)
-            split (str): on train or eval
+            split (str): on train or valid 
 
         Returns:
             loss: results of of that batch
         """
 
-        assert split in ['train', 'valid'], "split must be train or valid"
+        assert split in ['train', 'valid', 'inference'], "split must be train or valid or inference"
 
         shuffled_triples = triples[torch.randperm(triples.shape[0]), :] if split == 'train' else triples # it is unnecessary to shuffle in valid
-        with torch.enable_grad() if split == 'train' else torch.no_grad():
+        with torch.enable_grad() if split == 'train' else torch.no_grad(): # inference does not require backward
             # TODO test if this one works
             with tqdm(total=shuffled_triples.shape[0], unit='ex', disable=not self.verbose) as bar:
-                bar.set_description(f"{split}_loss")
+                bar.set_description(f"{split}_loss") 
                 b_begin = 0
                 total_loss = 0
                 counter = 0
@@ -121,7 +125,7 @@ class KGOptimizer(nn.Module):
                     b_begin += self.batch_size
 
                     # update tqdm bar
-                    total_loss += 1
+                    total_loss += loss
                     counter += 1
                     bar.update(input_batch.shape[0])
                     bar.set_postfix(loss=f'{loss.item():.4f}')

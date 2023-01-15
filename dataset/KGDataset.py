@@ -76,7 +76,11 @@ class KGDataset(object):
             # add reciprocal relations
             if use_reciprocal:
                 copy = triples.clone().detach()
-                copy[:, 0], copy[:, 1], copy[:, 2] = copy[:, 2], copy[:, 1] + self.n_rel, copy[:, 0]
+                tmp = copy.clone().detach()[:, 0]
+                copy[:, 0] = copy[:, 2]
+                copy[:, 2] = tmp
+                copy[:, 1] = copy[:, 1] + self.n_rel
+                # copy[:, 0], copy[:, 1], copy[:, 2] = copy[:, 2], copy[:, 1] + self.n_rel, copy[:, 0]
                 triples = torch.cat((triples, copy), dim=0)
             
         except KeyError:
