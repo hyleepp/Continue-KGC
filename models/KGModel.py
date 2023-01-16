@@ -25,6 +25,12 @@ class KGModel(nn.Module, ABC):
         self.emb_ent = nn.Embedding(self.n_ent, self.hidden_size, device=args.device)
         self.emb_rel = nn.Embedding(self.n_rel * 2, self.hidden_size, device=args.device) # introduce reciprocal relations
 
+        if args.init_scale > 0:
+            self.emb_ent.weight.data = args.init_scale * torch.randn((self.n_ent, self.hidden_size))
+            self.emb_rel.weight.data = args.init_scale * torch.randn((self.n_rel * 2, self.hidden_size))
+        else:
+            pass
+
         return 
    
    # TODO murge the following two function
@@ -170,13 +176,13 @@ class KGModel(nn.Module, ABC):
                 q[:, 2] = tmp
                 q[:, 1] = q[:, 1] = self.n_rel
                 
-                # get ranking
-                ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
-                mean_rank = torch.mean(ranks).item()
-                mean_reciprocal_rank = torch.mean(1. / ranks).item()
-                hits_at[m] = torch.FloatTensor((list(map(
-                    lambda x: torch.mean((ranks <= x).float()).item(), [1, 3, 10]
-                ))))
+            # get ranking
+            ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
+            mean_rank[m] = torch.mean(ranks).item()
+            mean_reciprocal_rank[m] = torch.mean(1. / ranks).item()
+            hits_at[m] = torch.FloatTensor((list(map(
+                lambda x: torch.mean((ranks <= x).float()).item(), [1, 3, 10]
+            ))))
 
         return mean_rank, mean_reciprocal_rank, hits_at
 
@@ -200,26 +206,27 @@ class KGModel(nn.Module, ABC):
         with torch.no_grad():
             
             b_begin = 0
-            emb_e, emb_r = self.encode() # distance/bilinear based just simply get the embeddings while gnn needs to forward on graph
+            emb_e, emb_r = self.encode(triples) # distance/bilinear based just simply get the embeddings while gnn needs to forward on graph
             all_candidates = self.get_candidates(triples, emb_e, eval_mode=True) # get embeddings of all candidates
             # ? there may have unseen entities, which should be filtered
+            # TODO add a extra filter for other setting
 
             while b_begin < len(triples):
                 batch_triples = triples[b_begin: b_begin + batch_size].cuda()
 
                 # get embeddings
-                queries = self.get_queries(batch_triples, emb_e)
-                target_candidates = self.get_candidates(batch_triples, emb_e, eval_model=False)
+                queries = self.get_queries(batch_triples, emb_e, emb_r)
+                target_candidates = self.get_candidates(batch_triples, emb_e, eval_mode=False)
                 
-                all_scores = self.score(queries, target_candidates, eval_mode=True)
-                target_scores = self.score(queries, all_candidates, eval_mode=False) 
+                target_scores = self.score(queries, target_candidates, eval_mode=False)
+                all_scores = self.score(queries, all_candidates, eval_mode=True) 
 
                 # TODO filter part
                 # here we just simply filter out the target itself
                 # give the true and filer a huge negative number to ignore it
                 # TODO test this function
-                for i, triples in enumerate(triples):
-                    _, _, target = triples
+                for i, triple in enumerate(batch_triples):
+                    _, _, target = triple
                     all_scores[i, target] = -1e6 # 
 
                 ranks[b_begin:b_begin + batch_size] += torch.sum(

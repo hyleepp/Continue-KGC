@@ -68,7 +68,7 @@ def prepare_parser():
         "--max_epochs", type=int, default=200, help='training epochs'
     )
     parser.add_argument(
-        "--need_pretrain", action="store_true", help="need pretrain in the init split?"
+        "--pretrained_model_id", type=str, help="load the pretrained model, if not then need pretrain"
     )
     parser.add_argument(
         "--neg_size", type=int, default=-1, help="if -1, means not use negative sample, else means the size of negative sample"
@@ -87,6 +87,9 @@ def prepare_parser():
     )
     parser.add_argument(
         "--patient", type=int, default=10, help="how many evaluation before early stopping"
+    )
+    parser.add_argument(
+        "--init_scale", type=float, default=1e-3, help="the init scale of embeddings"
     )
 
     '''Incremental Part''' 
@@ -199,9 +202,9 @@ def active_learning_running(args, dataset, model, writer) -> None:
     best_mrr = None
     best_epoch = None
     # TODO add other cases 
-    logging.info("\t Start Init Training.")
 
-    if args.need_pretrain:
+    if not args.pretrained_model_id: 
+        logging.info("\t Do not specific a pretraiend model, then training from scratch.")
         # Get optimizer
         regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
         optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.pretrain_learning_rate)
@@ -217,7 +220,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
         # pretraining only on training_set, to make sure the performance of the current setting
 
         # may be jumped
-        logging.info("\t Start pretraining stage 1: on training split.")
+        logging.info("\t Start pretraining phase 1: on training split.")
         for step in range(args.max_epochs):
 
             # Train step
@@ -238,48 +241,55 @@ def active_learning_running(args, dataset, model, writer) -> None:
             if (step + 1) % args.valid_period == 0:
 
                 valid_metrics = model.calculate_metrics(valid_triples, filters)
-                valid_metrics = avg_both(valid_metrics)
+                valid_metrics = avg_both(*valid_metrics)
+
+                logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
 
                 valid_mrr = valid_metrics['MRR']
                 if not best_mrr or valid_mrr > best_mrr:
                     best_mrr = valid_mrr
                     counter = 0
                     best_epoch = step
+                    logging.info("Best results updated")
 
-                    logging.info(f"\t Saving model at epoch {step} in {args.save_dir}")
-                    torch.save(model.cpu().state_dict(), os.path.join(args.save_dir))
-                    model.cuda()
                 else:
                     counter += 1
                     if counter == args.patient:
                         logging.info("\t Early stopping.")
                         break
-        logging.info("\t Pretrain stage 1 finished Optimization finished")
+        logging.info("\t Pretrain phase 1 finished Optimization finished, get the best training epoch")
 
-        # Load previous best model, and further train based on it
+        logging.info("\t Start the pretrain phase 2: both train and valid data")
 
-        logging.info("\t Load ")
+        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset adam
 
+        for step in range(best_epoch): 
+
+            # Train step
+            model.train()
+            train_loss = optimizer.epoch(init_triples, 'train') # all data
+            logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
+
+            # write losses 
+            writer.add_scalar('train_loss', train_loss, step)
         
+        logging.info("\t Pretrain phase 2 finished Optimization finished.")
 
-                
-                
-                # calculate the metrics 
-                pass
-
-        # pretrain with all init triples
-        print("Training with extra validation data.")
-
-        # save the trained model
+        # save model
+        logging.info(f"\t Saving model in {args.save_dir}")
+        torch.save(model.cpu().state_dict(), os.path.join(args.save_dir, "model.pt"))
+        model.cuda()
     else:
+        logging.info(f"\t Load pretrained model")
         # load model
-        pass
-    
+        model.load_state_dict(torch.load(os.join(args.pretrained_model_id, "model.pt")))
+        logging.info("\t Load model successfully")
 
     # continue active completion
     completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))
 
     while completion_ratio < args.expected_completion_ratio:
+
         # prediction
 
         # incremental training
