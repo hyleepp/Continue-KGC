@@ -95,6 +95,9 @@ def prepare_parser():
 
     '''Incremental Part''' 
     parser.add_argument(
+        "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune'], help="the specific method used in incremental learning"
+    )
+    parser.add_argument(
         "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
     )
     parser.add_argument(
@@ -262,7 +265,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         logging.info("\t Start the pretrain phase 2: both train and valid data")
 
-        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset adam
+        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset optimizer
 
         for step in range(best_epoch): 
 
@@ -286,12 +289,19 @@ def active_learning_running(args, dataset, model, writer) -> None:
         model.load_state_dict(torch.load(os.join(args.pretrained_model_id, "model.pt")))
         logging.info("\t Load model successfully")
 
+    '''Incremental Learning Part'''
+    previous_true = init_triples # rename for clarity
+    previous_false = None # verified to be false, rather than negative samples
+
     # continue active completion
     completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))
-
+    # TODO add nested tqdm bars 
+    step = 0
     while completion_ratio < args.expected_completion_ratio:
+        step += 1
 
         # prediction
+        model.eval()
         with torch.no_grad():
             # inference while updating?
             # TODO keep two separate processes, and keep synchronization
@@ -347,24 +357,45 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         # get answer 
         # TODO try parallel style
-        verified_true = []
-        verified_false = []
+        new_true = []
+        new_false = []
         for _, triple in heap:
             
             # see if this triple in unexplored 
             if triple in unexplored_triples:
-                verified_true.append(triple)
+                new_true.append(triple)
             else:
-                verified_false.append(triple)
+                new_false.append(triple)
         
+        # update completion ratio
+        completion_ratio = len(previous_true + new_true)
+        # TODO update tqdm
 
         # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
 
         # incremental training
 
-        # update completion ratio
+        # modifed the learning rate and other settings of optimizer
+        optimizer.optimizer.learning_rate = args.incremental_learning_rate
+        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset optimizer
+
+        model.train()
+        optimizer.incremental_training(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+
+        # TODO use a basic incremental method instead of these two naive setting
+
+
+        # TODO think: do we just need to focus on the difference between ce and negative samples?
+
+        # all-together and only utilize the true examples
+        
+        
+        # put the new triples to previous
+        previous_true = torch.cat((previous_true, new_true), 0)
+        previous_false = torch.cat((previous_false, new_false), 0) if previous_false else new_false
 
         # save the current completion ratio
+        writer.add_scalar("completion_ratio", completion_ratio, step)
         pass
 
 
