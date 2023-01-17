@@ -1,3 +1,4 @@
 # python
 *.pyc
 find * -size +3M | cat >> .gitignore
+logs/
