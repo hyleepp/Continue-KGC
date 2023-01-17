@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from ..utils.string import red
 
 
 class KGOptimizer(nn.Module):
@@ -16,7 +17,7 @@ class KGOptimizer(nn.Module):
         super().__init__()
 
         # check args 
-        assert neg_size == -1 or neg_size > 1, f'The given argument negative sample size {neg_size} is not implemented, please choose -1 or a number greater than 0.'
+        assert neg_size == -1 or neg_size > 1, f'The given argument negative sample size {red(neg_size)} is not implemented, please choose -1 or a number greater than 0.'
         
 
         self.model = model 
@@ -83,52 +84,104 @@ class KGOptimizer(nn.Module):
         loss = self.loss_fn(predictions, truth) # TODO add other losses
 
         return loss, reg_factor
+    
+    def pretraining_epoch(self, triples, mode) -> Tensor:
+        """pretraining one epoch
+
+        Args:
+            triples (_type_): given data
+            mode (_type_): train or valid
+
+        Returns:
+            loss: 
+        """
+
+        assert mode in ['train', 'valid', 'inference'], "mode must be train or valid or inference"
+
+        triples = triples[torch.randperm(triples.shape[0]), :] if mode == 'train' else triples # it is unnecessary to shuffle in valid
+
+        with torch.enable_grad() if mode == 'train' else torch.no_grad(): # inference does not require backward
+            with tqdm(total=triples.shape[0], unit='ex', disable=not self.verbose) as bar:
+                bar.set_description(f"{mode}_loss") 
+                loss = self.epoch(triples, bar, mode)
+        
+        return loss
+            
+            
 
 
-    def epoch(self, triples: Tensor, split: str) -> Tensor:
-        """run one epoch of training
+
+    def incremental_epoch(self, previous_true, previous_false, cur_true, cur_false, method, args)->None:
+        """incremental training one epoch
+
+        Args:
+            previous_true (_type_): previous true triples 
+            previous_false (_type_): previous false triples
+            cur_true (_type_): current true triples
+            cur_false (_type_): current false triples
+            method (_type_): the incremental learning method
+            args (_type_): other args may used
+        """
+
+        # TODO replaced with a switch style
+        # TODO consider how to handle verified false
+        
+        if method == 'retrain': 
+            triples = torch.cat((previous_true, cur_true), 0)
+        elif method == 'finetune':
+            triples = cur_true
+        
+        with tqdm(total=triples.shape[0], unit='ex', disable=not self.verbose) as bar:
+            bar.set_description(f"Incremental training {method} loss")
+            loss = self.epoch(triples, bar, mode='train')
+        
+        return loss
+
+    
+
+        
+
+    def epoch(self, triples, bar, mode: str) -> Tensor:
+        """the running core of an optimizer 
 
         Args:
             triples (Tensor): training triples in shape (N_train x 3)
-            split (str): on train or valid 
+            bar: the tqdm handler of a progress bar
+            mode (str): on train or valid 
 
         Returns:
-            loss: results of of that batch
+            total_loss: avg loss of the given batch
         """
 
-        assert split in ['train', 'valid', 'inference'], "split must be train or valid or inference"
+    # TODO change the arguments, replaced with previous_true, prevoius_false, cur_true, cur_false
 
-        shuffled_triples = triples[torch.randperm(triples.shape[0]), :] if split == 'train' else triples # it is unnecessary to shuffle in valid
-        with torch.enable_grad() if split == 'train' else torch.no_grad(): # inference does not require backward
-            # TODO test if this one works
-            with tqdm(total=shuffled_triples.shape[0], unit='ex', disable=not self.verbose) as bar:
-                bar.set_description(f"{split}_loss") 
-                b_begin = 0
-                total_loss = 0
-                counter = 0
+        b_begin = 0
+        total_loss = 0
+        counter = 0
 
-                while b_begin < shuffled_triples.shape[0]:
-                    # get input batch
-                    input_batch = shuffled_triples[b_begin: b_begin + self.batch_size].cuda()
+        while b_begin < triples.shape[0]:
+            # get input batch
+            input_batch = triples[b_begin: b_begin + self.batch_size].cuda()
 
-                    # forward and backward (for train)
-                    if split == 'train':
-                        loss = self.calculate_loss(input_batch)
-                        self.optimizer.zero_grad()
-                        loss.backward()
-                        self.optimizer.step()
-                    elif split == 'valid':
-                        loss = self.calculate_loss(input_batch)
-                        total_loss += loss
+            # forward and backward (for train)
+            if mode == 'train':
+                loss = self.calculate_loss(input_batch)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+            elif mode == 'valid':
+                loss = self.calculate_loss(input_batch)
+                total_loss += loss
 
-                    # prepare for next batch
-                    b_begin += self.batch_size
+            # prepare for next batch
+            b_begin += self.batch_size
 
-                    # update tqdm bar
-                    total_loss += loss
-                    counter += 1
-                    bar.update(input_batch.shape[0])
-                    bar.set_postfix(loss=f'{loss.item():.4f}')
+            # update tqdm bar
+            total_loss += loss
+            counter += 1
+            bar.update(input_batch.shape[0])
+            bar.set_postfix(loss=f'{loss.item():.4f}')
 
-            total_loss /= counter
+        total_loss /= counter
+
         return total_loss

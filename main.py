@@ -229,12 +229,12 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
             # Train step
             model.train()
-            train_loss = optimizer.epoch(train_triples, 'train')
+            train_loss = optimizer.pretraining_epoch(train_triples, 'train')
             logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
 
             # Valid step
             model.eval()
-            valid_loss = optimizer.epoch(valid_triples, 'valid')
+            valid_loss = optimizer.pretraining_epoch(valid_triples, 'valid')
             logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
 
             # write losses 
@@ -271,7 +271,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
             # Train step
             model.train()
-            train_loss = optimizer.epoch(init_triples, 'train') # all data
+            train_loss = optimizer.pretraining_epoch(init_triples, 'train') # all data
             logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
 
             # write losses 
@@ -396,10 +396,8 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         # save the current completion ratio
         writer.add_scalar("completion_ratio", completion_ratio, step)
-        pass
 
-
-
+        return
 
 if __name__ == "__main__":
 
