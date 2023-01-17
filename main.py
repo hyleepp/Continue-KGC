@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import json
+import heapq
 
 import torch
 import torch.nn as nn
@@ -250,7 +251,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
                     best_mrr = valid_mrr
                     counter = 0
                     best_epoch = step
-                    logging.info("Best results updated")
+                    logging.info("Best results updated, save current model.")
 
                 else:
                     counter += 1
@@ -291,6 +292,73 @@ def active_learning_running(args, dataset, model, writer) -> None:
     while completion_ratio < args.expected_completion_ratio:
 
         # prediction
+        with torch.no_grad():
+            # inference while updating?
+            # TODO keep two separate processes, and keep synchronization
+            # 1. get possible nodes (indics)
+            # 1.1 just simply all nodes, save this one as a baseline
+            focus_nodes = torch.range(model.n_ent) # get all nodes
+            
+            # 1.2 get nodes via deviation
+            # 1.3 save as a queue or sth like this (merged with 1.2)
+            
+            # 2. propose a possible relations
+            # 2.1 naive setting, get all relations for each node
+            focus_relations = torch.range(model.n_rel * 2).unsqueeze_(0).repeat(focus_nodes, 1) # (nodes, rel)
+
+            # 3. inference and get the scores
+            # use a prior queue, this is not algorithm related, so will not be highlighted in paper
+            heap = (float("-inf"), None) * args.active_num
+            
+            # batch run
+            # here a batch is set to be 1000 # TODO more flexible
+            ent_begin = 0 # it could also be treated as the row id in focus_relations
+            rel_begin = 0 
+
+            # build triples
+            # simply loop # TODO -> a little bit parallel
+            # TODO to be tested
+            while ent_begin < len(focus_nodes):
+                while rel_begin < len(focus_relations):
+                    h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
+                    query = torch.cat((h, r)).unsqueeze_(0) #  add one dim, this will be removed in batched version
+                    scores = model.forward(query, eval_mode=True) # (BS x N_ent)
+
+                    # store to heap
+                    # screen out unqualified ones in parallel style
+                    remain_scores_idx = (scores > heap[0][0]).nonzero() # the idx of possible scores 
+
+                    # update heap
+                    for idx in remain_scores_idx:
+                        score = idx 
+                        if score > heap[0][0]:
+                            triple = torch.cat(h, r, idx[1])
+                            heapq.replace(heap, (score, triple))
+                    
+                    rel_begin += 1
+                ent_begin += 1
+            
+
+            # while ent_begin < len(focus_nodes):
+            #     while ent_begin < len(focus_nodes):
+            #         while rel_begin < len(focus_relations):
+            #             h, r = focus_nodes(ent_begin)
+            #             score, _ = model() 
+
+        # get answer 
+        # TODO try parallel style
+        verified_true = []
+        verified_false = []
+        for _, triple in heap:
+            
+            # see if this triple in unexplored 
+            if triple in unexplored_triples:
+                verified_true.append(triple)
+            else:
+                verified_false.append(triple)
+        
+
+        # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
 
         # incremental training
 
