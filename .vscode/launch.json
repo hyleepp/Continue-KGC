@@ -11,10 +11,13 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "env": {"CUDA_VISIBLE_DEVICES": "6"},
             "args": [
                 "--dataset", "WN18",
                 "--model", "TransE",
                 "--setting", "active_learning",
+                "--max_epochs", "10",
+                "--incremental_learning_method", "finetune"
             ]
         }
     ]

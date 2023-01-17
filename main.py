@@ -78,6 +78,9 @@ def prepare_parser():
         "--pretrain_learning_rate", type=float, default=1e-3, help='learning rate for pretraining'
     )
     parser.add_argument(
+        "--jump_phase_1", action="store_true", help="directly use both train and valid data to pretrain, jump the phase searching the early stopping epoch, and will directly use max_epochs as the training epochs while ignore early stopping"
+    )
+    parser.add_argument(
         "--train_ratio", type=float, default=0.9, help="train / (train + valid)"
     )
     parser.add_argument(
@@ -224,48 +227,56 @@ def active_learning_running(args, dataset, model, writer) -> None:
         # pretraining only on training_set, to make sure the performance of the current setting
 
         # may be jumped
-        logging.info("\t Start pretraining phase 1: on training split.")
-        for step in range(args.max_epochs):
+        if not args.jump_phase_1:
+            logging.info("\t Start pretraining phase 1: on training split.")
+            for step in range(args.max_epochs):
 
-            # Train step
-            model.train()
-            train_loss = optimizer.pretraining_epoch(train_triples, 'train')
-            logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
+                # Train step
+                model.train()
+                train_loss = optimizer.pretraining_epoch(train_triples, 'train')
+                logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
 
-            # Valid step
-            model.eval()
-            valid_loss = optimizer.pretraining_epoch(valid_triples, 'valid')
-            logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
+                # Valid step
+                model.eval()
+                valid_loss = optimizer.pretraining_epoch(valid_triples, 'valid')
+                logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
 
-            # write losses 
-            writer.add_scalar('train_loss', train_loss, step)
-            writer.add_scalar('valid_loss', valid_loss, step)
+                # write losses 
+                writer.add_scalar('train_loss', train_loss, step)
+                writer.add_scalar('valid_loss', valid_loss, step)
 
-            # Test on valid 
-            if (step + 1) % args.valid_period == 0:
+                # Test on valid 
+                if (step + 1) % args.valid_period == 0:
 
-                valid_metrics = model.calculate_metrics(valid_triples, filters)
-                valid_metrics = avg_both(*valid_metrics)
+                    valid_metrics = model.calculate_metrics(valid_triples, filters)
+                    valid_metrics = avg_both(*valid_metrics)
 
-                logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
+                    logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
 
-                valid_mrr = valid_metrics['MRR']
-                if not best_mrr or valid_mrr > best_mrr:
-                    best_mrr = valid_mrr
-                    counter = 0
-                    best_epoch = step
-                    logging.info("Best results updated, save current model.")
+                    valid_mrr = valid_metrics['MRR']
+                    if not best_mrr or valid_mrr > best_mrr:
+                        best_mrr = valid_mrr
+                        counter = 0
+                        best_epoch = step
+                        logging.info("Best results updated, save current model.")
 
-                else:
-                    counter += 1
-                    if counter == args.patient:
-                        logging.info("\t Early stopping.")
-                        break
-        logging.info("\t Pretrain phase 1 finished Optimization finished, get the best training epoch")
+                    else:
+                        counter += 1
+                        if counter == args.patient:
+                            logging.info("\t Early stopping.")
+                            break
+            logging.info("\t Pretrain phase 1 finished Optimization finished, get the best training epoch")
+        else:
+            best_epoch = args.max_epochs
 
         logging.info("\t Start the pretrain phase 2: both train and valid data")
 
-        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset optimizer
+        # * reset model and optimizer, train from scratch,
+        # ? we may change to continue previous training results
+        model = getattr(models, args.model)(args)
+        model.to(args.device)
+        optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.pretrain_learning_rate)
+        optimizer = KGOptimizer(model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
 
         for step in range(best_epoch): 
 
@@ -377,7 +388,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         # modifed the learning rate and other settings of optimizer
         optimizer.optimizer.learning_rate = args.incremental_learning_rate
-        optimizer.optimizer.param_group[0]['lr'] = args.pretrain_learning_rate # reset optimizer
+        optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
 
         model.train()
         optimizer.incremental_training(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  

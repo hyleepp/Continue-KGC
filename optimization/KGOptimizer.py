@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
-from ..utils.string import red
 
 
 class KGOptimizer(nn.Module):
@@ -17,7 +16,7 @@ class KGOptimizer(nn.Module):
         super().__init__()
 
         # check args 
-        assert neg_size == -1 or neg_size > 1, f'The given argument negative sample size {red(neg_size)} is not implemented, please choose -1 or a number greater than 0.'
+        assert neg_size == -1 or neg_size > 1, f'The given argument negative sample size {neg_size} is not implemented, please choose -1 or a number greater than 0.'
         
 
         self.model = model 

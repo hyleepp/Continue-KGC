@@ -1,0 +1,59 @@
+2023-43-17 20:43:11 INFO     Saving logs in logs/01_17/WN18/TransE_20_43_11
+2023-43-17 20:43:11 INFO     active_num = 1000
+2023-43-17 20:43:11 INFO     batch_size = 500
+2023-43-17 20:43:11 INFO     counter = 10
+2023-43-17 20:43:11 INFO     dataset = WN18
+2023-43-17 20:43:11 INFO     debug = False
+2023-43-17 20:43:11 INFO     device = cuda
+2023-43-17 20:43:11 INFO     dyn_scale = False
+2023-43-17 20:43:11 INFO     expected_completion_ratio = 0.99
+2023-43-17 20:43:11 INFO     hidden_size = 200
+2023-43-17 20:43:11 INFO     incremental_learning_method = finetune
+2023-43-17 20:43:11 INFO     incremental_learning_rate = 0.001
+2023-43-17 20:43:11 INFO     init_scale = 0.001
+2023-43-17 20:43:11 INFO     max_epochs = 10
+2023-43-17 20:43:11 INFO     model = TransE
+2023-43-17 20:43:11 INFO     n_ent = 40943
+2023-43-17 20:43:11 INFO     n_rel = 18
+2023-43-17 20:43:11 INFO     neg_size = -1
+2023-43-17 20:43:11 INFO     optimizer = Adam
+2023-43-17 20:43:11 INFO     patient = 10
+2023-43-17 20:43:11 INFO     pretrain_learning_rate = 0.001
+2023-43-17 20:43:11 INFO     pretrained_model_id = None
+2023-43-17 20:43:11 INFO     reg_weight = 0
+2023-43-17 20:43:11 INFO     regularizer = F2
+2023-43-17 20:43:11 INFO     save_dir = logs/01_17/WN18/TransE_20_43_11
+2023-43-17 20:43:11 INFO     setting = active_learning
+2023-43-17 20:43:11 INFO     sta_scale = 1
+2023-43-17 20:43:11 INFO     train_ratio = 0.9
+2023-43-17 20:43:11 INFO     valid_period = 5
+2023-43-17 20:43:11 INFO     	 Loading WN18 in active_learning setting, with shape (40943, 18)
+2023-43-17 20:43:13 INFO     Total number of parameters 8195800
+2023-43-17 20:43:13 INFO     	 Do not specific a pretraiend model, then training from scratch.
+2023-43-17 20:43:13 INFO     	 Start pretraining phase 1: on training split.
+2023-43-17 20:43:18 INFO     	 Epoch 0 | average train loss: 10.0158
+2023-43-17 20:43:18 INFO     	 Epoch 0 | average valid loss: 18.0603
+2023-43-17 20:43:22 INFO     	 Epoch 1 | average train loss: 8.0814
+2023-43-17 20:43:22 INFO     	 Epoch 1 | average valid loss: 15.1061
+2023-43-17 20:43:26 INFO     	 Epoch 2 | average train loss: 5.9712
+2023-43-17 20:43:26 INFO     	 Epoch 2 | average valid loss: 11.3470
+2023-43-17 20:43:29 INFO     	 Epoch 3 | average train loss: 3.9383
+2023-43-17 20:43:29 INFO     	 Epoch 3 | average valid loss: 8.8284
+2023-43-17 20:43:33 INFO     	 Epoch 4 | average train loss: 2.9955
+2023-43-17 20:43:33 INFO     	 Epoch 4 | average valid loss: 7.8069
+2023-43-17 20:43:35 INFO     MRR: 0.347, Hits@1: 0.214, Hits@3: 0.410, Hits@10: 0.607 
+2023-43-17 20:43:35 INFO     Best results updated, save current model.
+2023-43-17 20:43:38 INFO     	 Epoch 5 | average train loss: 2.5895
+2023-43-17 20:43:39 INFO     	 Epoch 5 | average valid loss: 7.2556
+2023-43-17 20:43:42 INFO     	 Epoch 6 | average train loss: 2.3433
+2023-43-17 20:43:42 INFO     	 Epoch 6 | average valid loss: 6.9251
+2023-43-17 20:43:46 INFO     	 Epoch 7 | average train loss: 2.1703
+2023-43-17 20:43:46 INFO     	 Epoch 7 | average valid loss: 6.7043
+2023-43-17 20:43:50 INFO     	 Epoch 8 | average train loss: 2.0431
+2023-43-17 20:43:50 INFO     	 Epoch 8 | average valid loss: 6.5237
+2023-43-17 20:43:54 INFO     	 Epoch 9 | average train loss: 1.9470
+2023-43-17 20:43:54 INFO     	 Epoch 9 | average valid loss: 6.3957
+2023-43-17 20:43:55 INFO     MRR: 0.376, Hits@1: 0.253, Hits@3: 0.432, Hits@10: 0.623 
+2023-43-17 20:43:55 INFO     Best results updated, save current model.
+2023-43-17 20:43:55 INFO     	 Pretrain phase 1 finished Optimization finished, get the best training epoch
+2023-43-17 20:43:55 INFO     	 Start the pretrain phase 2: both train and valid data
