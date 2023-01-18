@@ -20,6 +20,7 @@ class KGModel(nn.Module, ABC):
         self.n_ent = args.n_ent
         self.n_rel = args.n_rel
         self.hidden_size = args.hidden_size
+        self.device = args.device
 
         # naive version of embeddings
         self.emb_ent = nn.Embedding(self.n_ent, self.hidden_size, device=args.device)
@@ -111,7 +112,7 @@ class KGModel(nn.Module, ABC):
         if not eval_mode:
             return enc_e[triples[:, 2]]
         else:
-            return self.emb_ent.weight # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
+            return enc_e # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
 
 
 
@@ -146,7 +147,7 @@ class KGModel(nn.Module, ABC):
         scores = self.decode(triples, enc_e, enc_r, eval_mode)
         
         # get regularization terms
-        reg_factor = self.get_reg_factor(triples, enc_e, enc_r)
+        reg_factor = self.get_reg_factor(triples, enc_e, enc_r) if not eval_mode else None # a dummy one
 
         return scores, reg_factor
     

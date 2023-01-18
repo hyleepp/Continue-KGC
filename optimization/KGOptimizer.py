@@ -106,10 +106,6 @@ class KGOptimizer(nn.Module):
         
         return loss
             
-            
-
-
-
     def incremental_epoch(self, previous_true, previous_false, cur_true, cur_false, method, args)->None:
         """incremental training one epoch
 
@@ -135,10 +131,6 @@ class KGOptimizer(nn.Module):
             loss = self.epoch(triples, bar, mode='train')
         
         return loss
-
-    
-
-        
 
     def epoch(self, triples, bar, mode: str) -> Tensor:
         """the running core of an optimizer 

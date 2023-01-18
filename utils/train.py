@@ -44,3 +44,14 @@ def avg_both(mrs, mrrs, hits) -> dict:
     
     return {'MR': mr, "MRR": mrr, 'hits@{1,3,10}': hit}
 
+class HeapNode(object):
+    '''help to use a heap to get top-k pairs of (score, triple) based on scores.
+        since triples are incompatible, we shall ignore all of them
+    '''
+
+    def __init__(self, tuple) -> None:
+        self.value, self.triple = tuple
+        return
+    
+    def __lt__(self, other) -> bool:
+        return self.value < other.value # triples are incompatible

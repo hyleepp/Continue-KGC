@@ -9,13 +9,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 import models
 from models import ALL_MODELS 
 from optimization.KGOptimizer import KGOptimizer
 from optimization import Regularizer
 from optimization.Regularizer import ALL_REGULARIZER
-from utils.train import get_savedir, count_param, avg_both
+from utils.train import get_savedir, count_param, avg_both, HeapNode
 from dataset.KGDataset import KGDataset
 
 ''' Parser
@@ -184,7 +185,7 @@ def initialization(args):
     save_config(args, save_dir)
 
     # Load data, default for active learning
-    logging.info(f"\t Loading {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape())}")
+    logging.info(f"\t Loading dataset {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape())}")
 
     # TODO ce_weight
 
@@ -297,10 +298,10 @@ def active_learning_running(args, dataset, model, writer) -> None:
     else:
         logging.info(f"\t Load pretrained model")
         # load model
-        model.load_state_dict(torch.load(os.join(args.pretrained_model_id, "model.pt")))
+        model.load_state_dict(torch.load(os.path.join(args.pretrained_model_id, "model.pt")))
         logging.info("\t Load model successfully")
 
-    '''Incremental Learning Part'''
+    logging.info("\t Incremental learning start.")
     previous_true = init_triples # rename for clarity
     previous_false = None # verified to be false, rather than negative samples
 
@@ -318,18 +319,20 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # TODO keep two separate processes, and keep synchronization
             # 1. get possible nodes (indics)
             # 1.1 just simply all nodes, save this one as a baseline
-            focus_nodes = torch.range(model.n_ent) # get all nodes
+            focus_nodes = torch.arange(model.n_ent).to(model.device) # get all nodes # ! default
             
             # 1.2 get nodes via deviation
             # 1.3 save as a queue or sth like this (merged with 1.2)
             
             # 2. propose a possible relations
             # 2.1 naive setting, get all relations for each node
-            focus_relations = torch.range(model.n_rel * 2).unsqueeze_(0).repeat(focus_nodes, 1) # (nodes, rel)
+            focus_relations = torch.arange(model.n_rel * 2).unsqueeze_(0).repeat(len(focus_nodes), 1).to(model.device) # (nodes, rel)
+
+            # TODO also limits the possible tails 
 
             # 3. inference and get the scores
             # use a prior queue, this is not algorithm related, so will not be highlighted in paper
-            heap = (float("-inf"), None) * args.active_num
+            heap = [HeapNode((float("-inf"), None)) for _ in range(args.active_num)]
             
             # batch run
             # here a batch is set to be 1000 # TODO more flexible
@@ -339,25 +342,32 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # build triples
             # simply loop # TODO -> a little bit parallel
             # TODO to be tested
-            while ent_begin < len(focus_nodes):
-                while rel_begin < len(focus_relations):
-                    h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
-                    query = torch.cat((h, r)).unsqueeze_(0) #  add one dim, this will be removed in batched version
-                    scores = model.forward(query, eval_mode=True) # (BS x N_ent)
+            # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
+            with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
+                bar.set_description("Get candidate progress")
+                while ent_begin < len(focus_nodes):
+                    rel_begin = 0
+                    while rel_begin < len(focus_relations[0]):
+                        h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
+                        query = torch.stack((h, r)).unsqueeze_(0) #  add one dim, this will be removed in batched version
+                        scores, _ = model(query, eval_mode=True) # (BS x N_ent)
 
-                    # store to heap
-                    # screen out unqualified ones in parallel style
-                    remain_scores_idx = (scores > heap[0][0]).nonzero() # the idx of possible scores 
+                        # store to heap and screen out unqualified ones in parallel style
+                        remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
+                        remain_scores = scores[torch.where(scores > heap[0].value)]
 
-                    # update heap
-                    for idx in remain_scores_idx:
-                        score = idx 
-                        if score > heap[0][0]:
-                            triple = torch.cat(h, r, idx[1])
-                            heapq.replace(heap, (score, triple))
+                        # update heap
+                        # TODO see if we let this run on cpu and we continue gpu processes 
+                        for i in range(len(remain_scores_idx)):
+                            if remain_scores[i] > heap[0].value:
+                                triple = torch.stack((h, r, remain_scores_idx[i][1]))
+                                heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
+                        
+                        rel_begin += 1
+                        bar.update(1)
+                    ent_begin += 1
+            # Detach 
                     
-                    rel_begin += 1
-                ent_begin += 1
             
 
             # while ent_begin < len(focus_nodes):
@@ -370,13 +380,13 @@ def active_learning_running(args, dataset, model, writer) -> None:
         # TODO try parallel style
         new_true = []
         new_false = []
-        for _, triple in heap:
+        for node in heap:
             
             # see if this triple in unexplored 
-            if triple in unexplored_triples:
-                new_true.append(triple)
+            if node.triple in unexplored_triples:
+                new_true.append(node.triple)
             else:
-                new_false.append(triple)
+                new_false.append(node.triple)
         
         # update completion ratio
         completion_ratio = len(previous_true + new_true)
