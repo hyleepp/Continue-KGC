@@ -55,3 +55,12 @@ class HeapNode(object):
     
     def __lt__(self, other) -> bool:
         return self.value < other.value # triples are incompatible
+
+def tensor2set(tensor) -> set:
+    '''convert a (N x 3) tensor to a set of triples'''
+    ret = set()
+
+    for i in range(len(tensor)):
+        ret.add((tensor[i][0].item(), tensor[i][1].item(), tensor[i][2].item()))
+    
+    return ret

@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "env": {"CUDA_VISIBLE_DEVICES": "0"},
+            "env": {"CUDA_VISIBLE_DEVICES": "4"},
             "args": [
                 "--dataset", "WN18",
                 "--model", "TransE",
@@ -19,6 +19,7 @@
                 "--max_epochs", "10",
                 "--incremental_learning_method", "finetune",
                 "--pretrained_model_id", "logs/01_18/WN18/TransE_17_03_54",
+                "--active_num", "10000",
             ]
         }
     ]

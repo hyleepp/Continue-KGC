@@ -16,7 +16,7 @@ from models import ALL_MODELS
 from optimization.KGOptimizer import KGOptimizer
 from optimization import Regularizer
 from optimization.Regularizer import ALL_REGULARIZER
-from utils.train import get_savedir, count_param, avg_both, HeapNode
+from utils.train import get_savedir, count_param, avg_both, tensor2set, HeapNode
 from dataset.KGDataset import KGDataset
 
 ''' Parser
@@ -292,21 +292,31 @@ def active_learning_running(args, dataset, model, writer) -> None:
         logging.info("\t Pretrain phase 2 finished Optimization finished.")
 
         # save model
-        logging.info(f"\t Saving model in {args.save_dir}")
+        logging.info(f"\t Saving model in {args.save_dir}.")
         torch.save(model.cpu().state_dict(), os.path.join(args.save_dir, "model.pt"))
         model.cuda()
     else:
-        logging.info(f"\t Load pretrained model")
+        logging.info(f"\t Load pretrained model.")
         # load model
         model.load_state_dict(torch.load(os.path.join(args.pretrained_model_id, "model.pt")))
-        logging.info("\t Load model successfully")
+        logging.info("\t Load model successfully.")
 
     logging.info("\t Incremental learning start.")
+    # TODO modified this part
+    optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.incremental_learning_rate)
+    regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
+    optimizer = KGOptimizer(model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
+
     previous_true = init_triples # rename for clarity
     previous_false = None # verified to be false, rather than negative samples
 
+    previous_true_set = tensor2set(init_triples) # use a hash function to help determine whether a new triples has appeared
+    previous_false_set = set()
+
+    unexplored_triples_set = tensor2set(unexplored_triples)
+
     # continue active completion
-    completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))
+    completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples) * 2)  # unexplored does not have reciprocal relations
     # TODO add nested tqdm bars 
     step = 0
     while completion_ratio < args.expected_completion_ratio:
@@ -342,12 +352,15 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
             # build triples
             # simply loop # TODO -> a little bit parallel
+            # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
+            # TODO filtered out what already have 
             with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
+                cur_seen = set()
                 while ent_begin < len(focus_nodes):
                     rel_begin = 0
-                    batch_size = args.batch_size if ent_begin > 0 else 1 # initially give a mini batch to set a filter bar, if we initially use a huge batch, the first loop will be very slow
+                    batch_size = args.batch_size if ent_begin > 0 else 1 # initially give a mini batch to set a filter bar, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
                     while rel_begin < len(focus_relations[0]):
                         h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
                         # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
@@ -364,35 +377,54 @@ def active_learning_running(args, dataset, model, writer) -> None:
                             lhs_idx, t = remain_scores_idx[i]
                             if remain_scores[i] > heap[0].value:
                                 triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
-                                heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
+                                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                                triple_tuple = tuple(triple.tolist())
+                                if triple_tuple not in previous_true_set and \
+                                   triple_tuple not in previous_false_set and \
+                                   triple_tuple not in cur_seen: # todo find some better way to do so
+                                    heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
+                                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + model.n_rel, triple_tuple[0])
+                                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
                         
                         rel_begin += 1
                         bar.update(len(h))
                         bar.set_postfix(min_score=f'{heap[0].value:.3f}')
                     ent_begin += batch_size
-            # Detach 
-                    
-            
-
-            # while ent_begin < len(focus_nodes):
-            #     while ent_begin < len(focus_nodes):
-            #         while rel_begin < len(focus_relations):
-            #             h, r = focus_nodes(ent_begin)
-            #             score, _ = model() 
 
         # get answer 
+        assert heap[-1].value != float("-inf"), "we meet some problems"
+
         new_true = []
         new_false = []
 
+        new_true_set = set()
+        new_false_set = set()
+
         for node in heap:
-            # see if this triple in unexplored 
-            if node.triple in unexplored_triples:
-                new_true.append(node.triple)
-            else:
-                new_false.append(node.triple)
             
-        new_true = torch.stack(new_true)
-        new_false = torch.stack(new_false)
+            # see if this triple in unexplored 
+            triple = node.triple
+            triple_tuple = tuple(node.triple.tolist())
+
+            if triple_tuple in unexplored_triples_set:
+                new_true.append(triple)
+                new_true_set.add(triple_tuple)
+                unexplored_triples_set.remove(triple_tuple)
+                
+            else:
+                new_false.append(triple)
+                new_false_set.add(triple_tuple)
+            
+        if new_true:
+            new_true = torch.stack(new_true) 
+        if new_false:
+            new_false = torch.stack(new_false)
+
+
+        # todo handle reciprocal
+        # since we have filtered head entities, we need reciprocal in training
+        # so, we add reciprocal to unexplored? and if we hit one of them, we pass
+        # todo update unexplored 
 
         # update completion ratio
         completion_ratio = (len(previous_true) + len(new_true)) / (len(init_triples) + len(unexplored_triples))
@@ -407,7 +439,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
         optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
 
         model.train()
-        optimizer.incremental_training(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+        incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
 
         # TODO use a basic incremental method instead of these two naive setting
 
@@ -418,13 +450,26 @@ def active_learning_running(args, dataset, model, writer) -> None:
         
         
         # put the new triples to previous
-        previous_true = torch.cat((previous_true, new_true), 0)
-        previous_false = torch.cat((previous_false, new_false), 0) if previous_false else new_false
+        # todo here is ambiguous, write in a better way
+        if len(new_true):
+            previous_true = torch.cat((previous_true, new_true), 0) 
+        if len(new_false) and previous_false: 
+            previous_false = torch.cat((previous_false, new_false), 0) 
+        elif len(new_false):
+            previous_false = new_false
+        
+        previous_true_set |= new_true_set
+        previous_false_set |= new_false_set
+
+
+        # TODO dict
 
         # save the current completion ratio
         writer.add_scalar("completion_ratio", completion_ratio, step)
+        if incre_loss is not float('nan'):
+            writer.add_scalar("incre_loss", incre_loss, step)
 
-        return
+    return
 
 if __name__ == "__main__":
 
