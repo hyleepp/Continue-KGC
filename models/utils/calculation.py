@@ -28,3 +28,23 @@ def euc_distance(x: Tensor, y: Tensor, eval_mode=False) -> Tensor:
     return x2 + y2 - 2 * xy
 
 
+
+def givens_rotation(r, x, transpose=False):
+    """Givens rotations.
+
+    Args:
+        r: torch.Tensor of shape (N x d), rotation parameters
+        x: torch.Tensor of shape (N x d), points to rotate
+        transpose: whether to transpose the rotation matrix
+
+    Returns:
+        torch.Tensor os shape (N x d) representing rotation of x by r
+    """
+    givens = r.view((r.shape[0], -1, 2))
+    givens = givens / torch.norm(givens, p=2, dim=-1, keepdim=True).clamp_min(1e-15)
+    x = x.view((r.shape[0], -1, 2))
+    if transpose:
+        x_rot = givens[:, :, 0:1] * x - givens[:, :, 1:] * torch.cat((-x[:, :, 1:], x[:, :, 0:1]), dim=-1)
+    else:
+        x_rot = givens[:, :, 0:1] * x + givens[:, :, 1:] * torch.cat((-x[:, :, 1:], x[:, :, 0:1]), dim=-1)
+    return x_rot.view((r.shape[0], -1))

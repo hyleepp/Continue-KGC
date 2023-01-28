@@ -7,9 +7,9 @@ import torch.nn as nn
 from torch import Tensor 
 
 from .KGModel import KGModel
-from .utils.calculation import euc_distance
+from .utils.calculation import euc_distance, givens_rotation
 
-DISTANCE_MODELS = ['TransE']
+DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE']
 BILINEAR_MODELS = ['RESCAL']
 
 class DBModel(KGModel):
@@ -56,3 +56,43 @@ class TransE(DBModel):
         return h + r
     
     
+class RotatE(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+    
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+
+        h = enc_e[triples[:, 0]]
+        r = enc_r[triples[:, 1]]
+        hr = givens_rotation(r, h)
+
+        return hr
+    
+class RotE(DBModel):
+    '''rotate + trans'''
+
+    def __init__(self, args) -> None:
+
+        super().__init__(args)
+        self.emb_trans = nn.Embedding(self.n_rel * 2, self.hidden_size, device=args.device)
+        if args.init_scale > 0:
+            self.emb_trans.weight.data = args.init_scale * torch.randn((self.n_rel * 2, self.hidden_size))
+
+        return
+    
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+
+        rot_r, trans_r = enc_r # enc_r contains two part, rotation and translation
+
+        h = enc_e[triples[:, 0]]
+        rot_r = rot_r[triples[:, 1]]
+        trans_r = trans_r[triples[:, 1]]
+        hr = givens_rotation(rot_r, h) + trans_r
+
+        return hr
+    
+            
+
+
+        

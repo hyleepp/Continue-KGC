@@ -16,7 +16,7 @@ from models import ALL_MODELS
 from optimization.KGOptimizer import KGOptimizer
 from optimization import Regularizer
 from optimization.Regularizer import ALL_REGULARIZER
-from utils.train import get_savedir, count_param, avg_both, tensor2set, HeapNode
+from utils.train import get_savedir, count_param, avg_both, tensor2set, HeapNode, DOTS
 from dataset.KGDataset import KGDataset
 
 ''' Parser
@@ -361,7 +361,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
             # TODO filtered out what already have 
             with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
-                bar.set_description("\u221f Get candidate progress")
+                bar.set_description("Get candidate progress")
                 cur_seen = set()
                 while ent_begin < len(focus_nodes):
                     rel_begin = 0
@@ -475,8 +475,13 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         # TODO dict ?
 
-        print(f"******* After {step}'th step of active learning. ***********")
-        print(f"******* Current Completion Ratio is {round(completion_ratio, 3)} *********")
+        # todo move to a function
+        s = "After " + str(step) + "'th step of active learning."
+        print(f"{DOTS} {s:<50} {DOTS}")
+        s = "Pred True " + str(len(new_true)) + " Pred False " + str(len(new_false)) + "."
+        print(f"{DOTS} {s:<50} {DOTS}")
+        s = "Current Completion Ratio is " + str(round(completion_ratio, 3)) + "."
+        print(f"{DOTS} {s:<50} {DOTS}")
         writer.add_scalar("completion_ratio", completion_ratio, step)
 
         

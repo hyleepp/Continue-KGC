@@ -1,6 +1,8 @@
 import datetime 
 import os
 
+DOTS = '********'
+
 def get_savedir(model_name:str, dataset_name:str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()

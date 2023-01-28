@@ -14,11 +14,12 @@
             "env": {"CUDA_VISIBLE_DEVICES": "7"},
             "args": [
                 "--dataset", "WN18",
-                "--model", "TransE",
+                "--model", "RotatE",
                 "--setting", "active_learning",
-                "--max_epochs", "10",
-                "--incremental_learning_method", "finetune",
-                "--pretrained_model_id", "logs/01_18/WN18/TransE_17_03_54",
+                "--max_epochs", "200",
+                "--reg_weight", "0.0001",
+                "--incremental_learning_method", "retrain",
+                // "--pretrained_model_id", "logs/01_18/WN18/TransE_17_03_54",
                 "--active_num", "10000",
             ]
         }
