@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "env": {"CUDA_VISIBLE_DEVICES": "3"},
+            "env": {"CUDA_VISIBLE_DEVICES": "7"},
             "args": [
                 "--dataset", "WN18",
                 "--model", "TransE",

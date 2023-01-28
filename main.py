@@ -102,6 +102,9 @@ def prepare_parser():
         "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune'], help="the specific method used in incremental learning"
     )
     parser.add_argument(
+        "--incremental_learning_epoch", type=int, default=10, help="the epoch of incremental learning"
+    )
+    parser.add_argument(
         "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
     )
     parser.add_argument(
@@ -203,7 +206,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
     # Data Loading
     init_triples = dataset.get_triples('init', use_reciprocal=True).to(args.device) # here we consider training is default to use reciprocal setting
-    unexplored_triples = dataset.get_triples('unexplored', use_reciprocal=False).to(args.device)
+    unexplored_triples = dataset.get_triples('unexplored', use_reciprocal=True).to(args.device)
 
     # Init Training
     early_stop_counter = 0
@@ -316,8 +319,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
     unexplored_triples_set = tensor2set(unexplored_triples)
 
     # continue active completion
-    completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples) * 2)  # unexplored does not have reciprocal relations
-    # TODO double the unexplored part
+    completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))  # unexplored does not have reciprocal relations
     step = 0
     with tqdm(total=1.0) as out_bar:
         while completion_ratio < args.expected_completion_ratio:
@@ -417,6 +419,9 @@ def active_learning_running(args, dataset, model, writer) -> None:
                     new_true.append(triple)
                     new_true_set.add(triple_tuple)
                     unexplored_triples_set.remove(triple_tuple)
+                    # TODO also remove the reciprocal part 
+                    rec_triple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
+                    unexplored_triples_set.remove(rec_triple)
                     
                 else:
                     new_false.append(triple)
@@ -445,7 +450,15 @@ def active_learning_running(args, dataset, model, writer) -> None:
             optimizer.optimizer.learning_rate = args.incremental_learning_rate
             optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
             model.train()
-            incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+
+            # training 
+            avg_incre_loss = 0
+            for incre_step in range(args.incremental_learning_epoch):
+                incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+                writer.add_scalar('incre_loss', incre_loss, incre_step)
+                avg_incre_loss += (incre_loss - avg_incre_loss) / incre_step
+
+            logging.info(f"\t Epoch {step} | average incre loss: {avg_incre_loss:.4f}")
 
             # TODO use a basic incremental method instead of these two naive setting
 
@@ -459,7 +472,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # todo here is ambiguous, write in a better way
             if len(new_true):
                 previous_true = torch.cat((previous_true, new_true), 0) 
-            if len(new_false) and previous_false: 
+            if len(new_false) and previous_false != None: 
                 previous_false = torch.cat((previous_false, new_false), 0) 
             elif len(new_false):
                 previous_false = new_false
