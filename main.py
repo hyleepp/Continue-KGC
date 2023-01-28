@@ -321,172 +321,163 @@ def active_learning_running(args, dataset, model, writer) -> None:
     # continue active completion
     completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))  # unexplored does not have reciprocal relations
     step = 0
-    with tqdm(total=1.0) as out_bar:
-        while completion_ratio < args.expected_completion_ratio:
-            # TODO put in a function
-            out_bar.set_description('Completion Rate')
-            out_bar.n = round(completion_ratio, 3)
-            out_bar.set_postfix(step=f'{step}')
-            out_bar.refresh()
+
+    while completion_ratio < args.expected_completion_ratio:
+        # TODO put in a function
+        
+        step += 1
+
+        # prediction
+        model.eval()
+        with torch.no_grad():
+            # inference while updating?
+            # TODO keep two separate processes, and keep synchronization
+            # 1. get possible nodes (indics)
+            # 1.1 just simply all nodes, save this one as a baseline
+            focus_nodes = torch.arange(model.n_ent).to(model.device) # get all nodes # ! default
             
-            step += 1
-
-            # prediction
-            model.eval()
-            with torch.no_grad():
-                # inference while updating?
-                # TODO keep two separate processes, and keep synchronization
-                # 1. get possible nodes (indics)
-                # 1.1 just simply all nodes, save this one as a baseline
-                focus_nodes = torch.arange(model.n_ent).to(model.device) # get all nodes # ! default
-                
-                # 1.2 get nodes via deviation
-                # 1.3 save as a queue or sth like this (merged with 1.2)
-                
-                # 2. propose a possible relations
-                # 2.1 naive setting, get all relations for each node
-                focus_relations = torch.arange(model.n_rel * 2).unsqueeze_(0).repeat(len(focus_nodes), 1).to(model.device) # (nodes, rel)
-                # 2.2 filter, maybe not so meaningful, since the tensor may not be sparse enough
-
-                # TODO also limits the possible tails 
-
-                # 3. inference and get the scores
-                # use a prior queue, this is not algorithm related, so will not be highlighted in paper
-                heap = [HeapNode((float("-inf"), None)) for _ in range(args.active_num)]
-                
-                # batch run
-                # here a batch is set to be 1000 # TODO more flexible
-                ent_begin = 0 # it could also be treated as the row id in focus_relations
-                rel_begin = 0 
-
-                # build triples
-                # simply loop # TODO -> a little bit parallel
-                # the less the active num, the faster this process
-                # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
-                # TODO filtered out what already have 
-                with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
-                    bar.set_description("-- Get candidate progress")
-                    cur_seen = set()
-                    while ent_begin < len(focus_nodes):
-                        rel_begin = 0
-                        batch_size = args.batch_size if ent_begin > 0 else 1 # initially give a mini batch to set a filter bar, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
-                        while rel_begin < len(focus_relations[0]):
-                            h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
-                            # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
-                            query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
-                            scores, _ = model(query, eval_mode=True) # (BS x N_ent) (h x t)
-
-                            # store to heap and screen out unqualified ones in parallel style
-                            remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
-                            remain_scores = scores[torch.where(scores > heap[0].value)]
-
-                            # update heap
-                            # TODO see if we let this run on cpu and we continue gpu processes 
-                            for i in range(len(remain_scores_idx)):
-                                lhs_idx, t = remain_scores_idx[i]
-                                if remain_scores[i] > heap[0].value:
-                                    triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
-                                    # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
-                                    triple_tuple = tuple(triple.tolist())
-                                    if triple_tuple not in previous_true_set and \
-                                    triple_tuple not in previous_false_set and \
-                                    triple_tuple not in cur_seen: # todo find some better way to do so
-                                        heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
-                                        reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + model.n_rel, triple_tuple[0])
-                                        cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
-                            
-                            rel_begin += 1
-                            bar.update(len(h))
-                            bar.set_postfix(min_score=f'{heap[0].value:.3f}')
-                        ent_begin += batch_size
-
-            # get answer 
-            assert heap[-1].value != float("-inf"), "we meet some problems"
-
-            new_true = []
-            new_false = []
-
-            new_true_set = set()
-            new_false_set = set()
-
-            for node in heap:
-                
-                # see if this triple in unexplored 
-                triple = node.triple
-                triple_tuple = tuple(node.triple.tolist())
-
-                if triple_tuple in unexplored_triples_set:
-                    new_true.append(triple)
-                    new_true_set.add(triple_tuple)
-                    unexplored_triples_set.remove(triple_tuple)
-                    # TODO also remove the reciprocal part 
-                    rec_triple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
-                    unexplored_triples_set.remove(rec_triple)
-                    
-                else:
-                    new_false.append(triple)
-                    new_false_set.add(triple_tuple)
-                
-            if new_true:
-                new_true = torch.stack(new_true) 
-            if new_false:
-                new_false = torch.stack(new_false)
-
-
-            # todo handle reciprocal
-            # since we have filtered head entities, we need reciprocal in training
-            # so, we add reciprocal to unexplored? and if we hit one of them, we pass
-            # todo update unexplored 
-
-            # update completion ratio
-            completion_ratio = (len(previous_true) + len(new_true)) / (len(init_triples) + len(unexplored_triples))
-            # TODO update tqdm
-
-            # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
-
-            # incremental training
-
-            # modifed the learning rate and other settings of optimizer
-            optimizer.optimizer.learning_rate = args.incremental_learning_rate
-            optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
-            model.train()
-
-            # training 
-            avg_incre_loss = 0
-            for incre_step in range(args.incremental_learning_epoch):
-                incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
-                writer.add_scalar('incre_loss', incre_loss, incre_step)
-                avg_incre_loss += (incre_loss - avg_incre_loss) / incre_step
-
-            logging.info(f"\t Epoch {step} | average incre loss: {avg_incre_loss:.4f}")
-
-            # TODO use a basic incremental method instead of these two naive setting
-
-
-            # TODO think: do we just need to focus on the difference between ce and negative samples?
-
-            # all-together and only utilize the true examples
+            # 1.2 get nodes via deviation
+            # 1.3 save as a queue or sth like this (merged with 1.2)
             
+            # 2. propose a possible relations
+            # 2.1 naive setting, get all relations for each node
+            focus_relations = torch.arange(model.n_rel * 2).unsqueeze_(0).repeat(len(focus_nodes), 1).to(model.device) # (nodes, rel)
+            # 2.2 filter, maybe not so meaningful, since the tensor may not be sparse enough
+
+            # TODO also limits the possible tails 
+
+            # 3. inference and get the scores
+            # use a prior queue, this is not algorithm related, so will not be highlighted in paper
+            heap = [HeapNode((float("-inf"), None)) for _ in range(args.active_num)]
             
-            # put the new triples to previous
-            # todo here is ambiguous, write in a better way
-            if len(new_true):
-                previous_true = torch.cat((previous_true, new_true), 0) 
-            if len(new_false) and previous_false != None: 
-                previous_false = torch.cat((previous_false, new_false), 0) 
-            elif len(new_false):
-                previous_false = new_false
+            # batch run
+            # here a batch is set to be 1000 # TODO more flexible
+            ent_begin = 0 # it could also be treated as the row id in focus_relations
+            rel_begin = 0 
+
+            # build triples
+            # simply loop # TODO -> a little bit parallel
+            # the less the active num, the faster this process
+            # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
+            # TODO filtered out what already have 
+            with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
+                bar.set_description("\u221f Get candidate progress")
+                cur_seen = set()
+                while ent_begin < len(focus_nodes):
+                    rel_begin = 0
+                    batch_size = args.batch_size if ent_begin > 0 else 1 # initially give a mini batch to set a filter bar, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+                    while rel_begin < len(focus_relations[0]):
+                        h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
+                        # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
+                        query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
+                        scores, _ = model(query, eval_mode=True) # (BS x N_ent) (h x t)
+
+                        # store to heap and screen out unqualified ones in parallel style
+                        remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
+                        remain_scores = scores[torch.where(scores > heap[0].value)]
+
+                        # update heap
+                        # TODO see if we let this run on cpu and we continue gpu processes 
+                        for i in range(len(remain_scores_idx)):
+                            lhs_idx, t = remain_scores_idx[i]
+                            if remain_scores[i] > heap[0].value:
+                                triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
+                                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                                triple_tuple = tuple(triple.tolist())
+                                if triple_tuple not in previous_true_set and \
+                                triple_tuple not in previous_false_set and \
+                                triple_tuple not in cur_seen: # todo find some better way to do so
+                                    heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
+                                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + model.n_rel, triple_tuple[0])
+                                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
+                        
+                        rel_begin += 1
+                        bar.update(len(h))
+                        bar.set_postfix(min_score=f'{heap[0].value:.3f}')
+                    ent_begin += batch_size
+
+        # get answer 
+        assert heap[-1].value != float("-inf"), "we meet some problems"
+
+        new_true = []
+        new_false = []
+
+        new_true_set = set()
+        new_false_set = set()
+
+        # active verified are triples in unexplored part
+        for node in heap:
             
-            previous_true_set |= new_true_set
-            previous_false_set |= new_false_set
+            # see if this triple in unexplored 
+            triple = node.triple
+            triple_tuple = tuple(node.triple.tolist())
+
+            if triple_tuple in unexplored_triples_set:
+                new_true.append(triple)
+                new_true_set.add(triple_tuple)
+                unexplored_triples_set.remove(triple_tuple)
+                # TODO also remove the reciprocal part 
+                rec_triple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
+                unexplored_triples_set.remove(rec_triple)
+                
+            else:
+                new_false.append(triple)
+                new_false_set.add(triple_tuple)
+            
+        if new_true:
+            new_true = torch.stack(new_true) 
+        if new_false:
+            new_false = torch.stack(new_false)
 
 
-            # TODO dict
 
-            # save the current completion ratio
-            writer.add_scalar("completion_ratio", completion_ratio, step)
-            if incre_loss is not float('nan'):
-                writer.add_scalar("incre_loss", incre_loss, step)
+        # update completion ratio
+        completion_ratio = (len(previous_true) + len(new_true)) / (len(init_triples) + len(unexplored_triples))
+
+        # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
+
+        # incremental training
+
+        # modifed the learning rate and other settings of optimizer
+        optimizer.optimizer.learning_rate = args.incremental_learning_rate
+        optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
+        model.train()
+
+        # training 
+        avg_incre_loss = 0
+        for incre_step in range(args.incremental_learning_epoch):
+            incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+            writer.add_scalar('incre_loss', incre_loss, incre_step)
+            avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
+
+        logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
+
+        # TODO use a basic incremental method instead of these two naive setting
+
+
+        # TODO think: do we just need to focus on the difference between ce and negative samples?
+
+        # all-together and only utilize the true examples
+        
+        
+        # put the new triples to previous
+        # todo here is ambiguous, write in a better way
+        if len(new_true):
+            previous_true = torch.cat((previous_true, new_true), 0) 
+        if len(new_false) and previous_false != None: 
+            previous_false = torch.cat((previous_false, new_false), 0) 
+        elif len(new_false):
+            previous_false = new_false
+        
+        previous_true_set |= new_true_set
+        previous_false_set |= new_false_set
+
+
+        # TODO dict ?
+
+        print(f"******* After {step}'th step of active learning. ***********")
+        print(f"******* Current Completion Ratio is {round(completion_ratio, 3)} *********")
+        writer.add_scalar("completion_ratio", completion_ratio, step)
 
         
     print(f"Completion finished at step {step}.")

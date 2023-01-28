@@ -130,7 +130,7 @@ class KGOptimizer(nn.Module):
             return float('nan') # if there is not new triples, then do not need to calculate loss
         
         with tqdm(total=triples.shape[0], unit='ex', disable=not self.verbose) as bar:
-            bar.set_description(f"Incremental training {method} loss")
+            bar.set_description(f"\u221f Incremental training {method} loss")
             loss = self.epoch(triples, bar, mode='train')
         
         return loss
