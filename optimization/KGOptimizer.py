@@ -46,14 +46,14 @@ class KGOptimizer(nn.Module):
 
         
         if self.neg_size == -1:
-            loss, reg = self.no_neg_sample_loss(triples)
+            loss, reg_factor = self.no_neg_sample_loss(triples)
         else:
-            loss, reg = self.neg_sample_loss(triples)
+            loss, reg_factor = self.neg_sample_loss(triples)
 
         # calculate reg 
-        reg = self.regularizer(reg)
+        reg = self.regularizer(reg_factor) if reg_factor else 0 # the reg is not calculated during inference for saving time
         
-        return loss 
+        return loss + reg
 
     def neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
         '''The Loss based on negative sample'''

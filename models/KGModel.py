@@ -147,7 +147,7 @@ class KGModel(nn.Module, ABC):
         scores = self.decode(triples, enc_e, enc_r, eval_mode)
         
         # get regularization terms
-        reg_factor = self.get_reg_factor(triples, enc_e, enc_r) if not eval_mode else None # a dummy one
+        reg_factor = self.get_reg_factor(triples, enc_e, enc_r) if not eval_mode else None
 
         return scores, reg_factor
     
