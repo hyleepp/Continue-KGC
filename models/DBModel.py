@@ -81,6 +81,9 @@ class RotE(DBModel):
 
         return
     
+    def encode(self, triples: Tensor) -> Tensor:
+        return self.emb_ent.weight, (self.emb_rel.weight, self.emb_trans.weight) # here we need tensor, rather than Embedding
+    
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
 
         rot_r, trans_r = enc_r # enc_r contains two part, rotation and translation
