@@ -61,6 +61,9 @@ def prepare_parser():
     parser.add_argument(
         "--dyn_scale", action="store_true", help="whether or not add a learnable factor"
     )
+    parser.add_argument(
+        "--init_ratio", type=float, required=True, choices=[0.7, 0.8, 0.9], help="the initial ratio of the triples"
+    )
 
     '''Pretrain Part '''
     parser.add_argument(
@@ -181,7 +184,7 @@ def initialization(args):
 
     # create dataset
     dataset_path = os.path.join(os.environ['DATA_PATH'], args.dataset)
-    dataset = KGDataset(dataset_path, args.setting, args.debug)
+    dataset = KGDataset(dataset_path, args.setting, args.init_ratio, args.debug)
     args.n_ent, args.n_rel = dataset.get_shape() # add shape to args
 
     # save configs 
@@ -282,7 +285,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
         optim_method = getattr(torch.optim, args.optimizer)(model.parameters(), lr=args.pretrain_learning_rate)
         optimizer = KGOptimizer(model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
 
-        for step in range(best_epoch): 
+        for step in range(best_epoch + 1): 
 
             # Train step
             model.train()
@@ -360,12 +363,12 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
             # TODO filtered out what already have 
+            batch_size = 1
             with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 cur_seen = set()
                 while ent_begin < len(focus_nodes):
                     rel_begin = 0
-                    batch_size = args.batch_size if ent_begin > 0 else 1 # initially give a mini batch to set a filter bar, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
                     while rel_begin < len(focus_relations[0]):
                         h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
                         # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
@@ -395,6 +398,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
                         bar.update(len(h))
                         bar.set_postfix(min_score=f'{heap[0].value:.3f}')
                     ent_begin += batch_size
+                    batch_size = min(10 * batch_size, args.active_num) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
 
         # get answer 
         assert heap[-1].value != float("-inf"), "we meet some problems"
@@ -411,18 +415,23 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # see if this triple in unexplored 
             triple = node.triple
             triple_tuple = tuple(node.triple.tolist())
+            rec_triple = triple.clone()
+            rec_triple[0], rec_triple[1], rec_triple[2] = triple[2], (triple[1] + model.n_rel) % (model.n_rel * 2), triple[0]
+            rec_triple_tuple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
 
             if triple_tuple in unexplored_triples_set:
                 new_true.append(triple)
+                new_true.append(rec_triple)
                 new_true_set.add(triple_tuple)
+                new_true_set.add(rec_triple_tuple)
                 unexplored_triples_set.remove(triple_tuple)
-                # TODO also remove the reciprocal part 
-                rec_triple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
-                unexplored_triples_set.remove(rec_triple)
+                unexplored_triples_set.remove(rec_triple_tuple)
                 
             else:
                 new_false.append(triple)
+                new_false.append(rec_triple)
                 new_false_set.add(triple_tuple)
+                new_false_set.add(rec_triple_tuple)
             
         if new_true:
             new_true = torch.stack(new_true) 
@@ -452,7 +461,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
 
         logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
 
-        # TODO use a basic incremental method instead of these two naive setting
+        # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
 
 
         # TODO think: do we just need to focus on the difference between ce and negative samples?
