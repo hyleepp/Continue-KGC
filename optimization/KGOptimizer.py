@@ -23,10 +23,12 @@ class KGOptimizer(nn.Module):
         self.optimizer = optimizer
         self.regularizer = regularizer
 
+        self.n_ent = self.model.n_ent
+        self.n_rel = self.model.n_rel
         self.batch_size = batch_size
         self.neg_size = neg_size 
         self.sta_scale = sta_scale 
-        self.dyn_scale = 1 if dyn_scale else nn.Parameter(torch.Tensor([1]), requires_grad=True)
+        self.dyn_scale = 1 if not dyn_scale else nn.Parameter(torch.Tensor([1]), requires_grad=True)
         self.loss_fn = nn.CrossEntropyLoss(reduction='mean', weight=weight)
         
         self.debug = debug 
@@ -38,12 +40,17 @@ class KGOptimizer(nn.Module):
         pass
 
     def get_negative_samples(self, triples) -> None:
-        # TODO
-        pass
+        '''get negative samples based on original triple, pure random, no filter'''
+
+        neg_triples = triples.repeat(self.neg_size, 1)
+        neg_tails = torch.randint(0, self.n_ent, (len(neg_triples), )).to(triples.device)
+        neg_triples[:, 2] = neg_tails
+
+        return neg_triples 
+
 
     def calculate_loss(self, triples):
         '''Calculate the loss of the given triples'''
-
         
         if self.neg_size == -1:
             loss, reg_factor = self.no_neg_sample_loss(triples)
@@ -122,7 +129,7 @@ class KGOptimizer(nn.Module):
         # TODO consider how to handle verified false
         
         if method == 'retrain': 
-            triples = torch.cat((previous_true, cur_true), 0)
+            triples = torch.cat((previous_true, cur_true), 0) if len(cur_true) else previous_true # may do not have new true triples
         elif method == 'finetune':
             triples = cur_true
         

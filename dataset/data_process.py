@@ -164,7 +164,7 @@ def merge_fb(file_path):
 def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123): 
 
     # generate a folder
-    dataset_utils.mkdir(data_path + "/active_learning") 
+    dataset_utils.mkdir(data_path + "/active_learning" + f"/{init_ratio}") 
 
     # load total data
     with open(data_path + "/total.txt", 'r') as f:
@@ -197,13 +197,13 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     assert abs(len(init_triples) - n_init) <= 1
 
     # save as pickle
-    with open(os.path.join(data_path, "active_learning", "init_triples.pkl"), 'wb') as f:
+    with open(os.path.join(data_path, "active_learning", str(init_ratio), "init_triples.pkl"), 'wb') as f:
         int_init_triples = dataset_utils.triples_str_to_int(init_triples)
         ndarray_init_triples = np.asarray(int_init_triples).astype('int64')
         ndarray_init_triples = torch.from_numpy(ndarray_init_triples)
         pickle.dump(ndarray_init_triples, f)
 
-    with open(os.path.join(data_path, "active_learning", "unexplored_triples.pkl"), 'wb') as f:
+    with open(os.path.join(data_path, "active_learning", str(init_ratio), "unexplored_triples.pkl"), 'wb') as f:
         int_unexplored_triples = dataset_utils.triples_str_to_int(unexplored_triples)
         ndarray_unexplored_tripls = np.asarray(int_unexplored_triples).astype('int64')
         ndarray_unexplored_tripls = torch.from_numpy(ndarray_unexplored_tripls)
@@ -214,10 +214,10 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     unexplored_triples = dataset_utils.triples_to_lines(unexplored_triples)
 
     # write txt version
-    with open(os.path.join(data_path, "active_learning", "init_triples.txt"), 'w') as f:
+    with open(os.path.join(data_path, "active_learning", str(init_ratio), "init_triples.txt"), 'w') as f:
         f.writelines(init_triples)
     
-    with open(os.path.join(data_path, "active_learning", "unexplored_triples.txt"), 'w') as f:
+    with open(os.path.join(data_path, "active_learning", str(init_ratio), "unexplored_triples.txt"), 'w') as f:
         f.writelines(unexplored_triples)
     
     # write some characteristics about the dataset in Json
@@ -228,7 +228,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
         "random_seed": random_seed
     }
 
-    with open(os.path.join(data_path, "active_learning", "dataset_config.json"), 'w+') as f:
+    with open(os.path.join(data_path, "active_learning", str(init_ratio), "dataset_config.json"), 'w+') as f:
         dataset_config = json.dumps(dataset_config)
         f.write(dataset_config)
     
@@ -241,4 +241,4 @@ if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/WN18')
+    generate_active_learning_dataset('data/WN18', 0.9)

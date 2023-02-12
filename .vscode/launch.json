@@ -11,16 +11,23 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "env": {"CUDA_VISIBLE_DEVICES": "7"},
+            "env": {"CUDA_VISIBLE_DEVICES": "3"},
             "args": [
                 "--dataset", "WN18",
-                "--model", "RotatE",
+                "--model", "RESCAL",
                 "--setting", "active_learning",
+                "--init_ratio", "0.8",
                 "--max_epochs", "200",
-                "--reg_weight", "0.0001",
+                "--patient", "1",
+                // "--regularizer", "DURA_RESCAL",
+                "--reg_weight", "0.1",
                 "--incremental_learning_method", "retrain",
+                "--neg_size", "-1",
+                "--hidden_size", "200",
                 // "--pretrained_model_id", "logs/01_18/WN18/TransE_17_03_54",
+                // "--pretrained_model_id", "logs/01_28/WN18/RotatE_17_28_33", 
                 "--active_num", "10000",
+                "--incremental_learning_epoch", "10",
             ]
         }
     ]

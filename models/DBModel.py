@@ -69,6 +69,33 @@ class RotatE(DBModel):
 
         return hr
     
+class ComplEx(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        pass
+
+class RESCAL(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+        self.similarity_method = 'dot'
+        self.emb_rel = nn.Embedding(self.n_rel * 2, self.hidden_size * self.hidden_size)
+        if args.init_scale > 0:
+            self.emb_rel.weight.data = args.init_scale * torch.randn((self.n_rel * 2, self.hidden_size * self.hidden_size))
+        
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        h = enc_e[triples[:, 0]].unsqueeze(1)
+        Rel = enc_r[triples[:, 1]].view(-1, self.hidden_size, self.hidden_size)
+        hR = torch.matmul(h, Rel).squeeze(1)
+        return hR
+
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+        return enc_e[triples[:, 0]], enc_r[triples[:, 1]].view(-1, self.hidden_size, self.hidden_size), enc_e[triples[:, 2]] # enc_r = trans + rot
+    
+    
 class RotE(DBModel):
     '''rotate + trans'''
 
@@ -94,6 +121,9 @@ class RotE(DBModel):
         hr = givens_rotation(rot_r, h) + trans_r
 
         return hr
+    
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+        return enc_e[triples[:, 0]], enc_r[0][triples[:, 1]], enc_r[1][triples[:, 1]], enc_e[triples[:, 2]] # enc_r = trans + rot
     
             
 

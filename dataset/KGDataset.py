@@ -15,12 +15,13 @@ SETTING2SPLITS = {
 
 class KGDataset(object):
 
-    def __init__(self, data_path, setting, debug=False) -> None:
+    def __init__(self, data_path, setting, init_ratio, debug=False) -> None:
         """initialize the KGDataset 
 
         Args:
             data_path (str): where the data is
             setting (str): which kind of setting we are going to use
+            init_ratio (float): which division of KGs should be chosen
             debug (bool, optional): whether or not use debug mode, means using a few data. Default to be False
         """
 
@@ -31,6 +32,7 @@ class KGDataset(object):
         self.debug = debug
         self.data = {}
         self.setting = setting
+        self.init_ratio = init_ratio
         self.n_ent = 0
         self.n_rel = 0 # ! here we do not explicitly multiply this one by 2, which counts reciprocal relations
 
@@ -42,12 +44,12 @@ class KGDataset(object):
         
         # load data
         for split in splits:
-            file_path = os.path.join(self.data_path, setting, split + '_triples.pkl')
+            file_path = os.path.join(self.data_path, setting, str(init_ratio), split + '_triples.pkl')
             with open(file_path, 'rb') as f:
                 self.data[split] = pkl.load(f)
         
         # load the config file
-        with open(os.path.join(self.data_path, setting, 'dataset_config.json'), 'r') as f:
+        with open(os.path.join(self.data_path, setting, str(init_ratio), 'dataset_config.json'), 'r') as f:
             content = f.read()
             config = json.loads(content)
 

@@ -214,7 +214,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
     # Init Training
     early_stop_counter = 0
     best_mrr = None
-    best_epoch = None
+    best_epoch = 0
     # TODO add other cases 
 
     if not args.pretrained_model_id: 
@@ -362,8 +362,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # simply loop # TODO -> a little bit parallel
             # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
-            # TODO filtered out what already have 
-            batch_size = 1
+            batch_size = 1 # todo fix the the problem of single input
             with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 cur_seen = set()
