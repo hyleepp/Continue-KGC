@@ -27,7 +27,7 @@ class DBModel(KGModel):
         # we do not need this part, it is used in GNN based models
         return self.emb_ent.weight, self.emb_rel.weight # here we need tensor, rather than Embedding
 
-    def score(self, v_queries, v_candidates, eval_mode=False) -> Tensor:
+    def score(self, v_queries, v_candidates, eval_mode=False, require_grad=True) -> Tensor:
 
         # TODO continue here
         if self.similarity_method == 'dist':

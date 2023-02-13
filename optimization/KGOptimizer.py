@@ -119,8 +119,8 @@ class KGOptimizer(nn.Module):
         Args:
             previous_true (_type_): previous true triples 
             previous_false (_type_): previous false triples
-            cur_true (_type_): current true triples
-            cur_false (_type_): current false triples
+            cur_true (_type_): current true triples, if None means no new true
+            cur_false (_type_): current false triples, if None means no new false
             method (_type_): the incremental learning method
             args (_type_): other args may used
         """
@@ -129,7 +129,7 @@ class KGOptimizer(nn.Module):
         # TODO consider how to handle verified false
         
         if method == 'retrain': 
-            triples = torch.cat((previous_true, cur_true), 0) if len(cur_true) else previous_true # may do not have new true triples
+            triples = torch.cat((previous_true, cur_true), 0) if cur_true is not None else previous_true # may do not have new true triples
         elif method == 'finetune':
             triples = cur_true
         

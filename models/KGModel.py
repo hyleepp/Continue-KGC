@@ -130,12 +130,13 @@ class KGModel(nn.Module, ABC):
         return enc_e[triples[:, 0]], enc_r[triples[:, 1]], enc_e[triples[:, 2]] # the default setting, vectors of h, r, t
 
 
-    def forward(self, triples: Tensor, eval_mode=False) -> Tuple[Tensor, Tensor]:
+    def forward(self, triples: Tensor, eval_mode=False, require_reg=True) -> Tuple[Tensor, Tensor]:
         """forward function
 
         Args:
             triples (Tensor): input triples
             eval_mode (bool, optional): whether or not use eval mode. Defaults to False.
+            require_reg (boo, optional): whether or not calculate reg, which is only used when calculate loss. Default to True
 
         Returns:
             scores: the forward scores
@@ -147,7 +148,7 @@ class KGModel(nn.Module, ABC):
         scores = self.decode(triples, enc_e, enc_r, eval_mode)
         
         # get regularization terms
-        reg_factor = self.get_reg_factor(triples, enc_e, enc_r) 
+        reg_factor = self.get_reg_factor(triples, enc_e, enc_r) if require_reg else None
 
         return scores, reg_factor
     

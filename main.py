@@ -120,6 +120,9 @@ def prepare_parser():
         "--setting", type=str, required=True, choices=['active_learning'], help='which setting in KG'
     )
     parser.add_argument(
+        "--update_freq", type=int, default=1, help='how many step to do an incremental learning'
+    )
+    parser.add_argument(
         "--debug", action="store_true", help='whether or not debug the program'
     )
     parser.add_argument(
@@ -272,11 +275,11 @@ def active_learning_running(args, dataset, model, writer) -> None:
                         if counter == args.patient:
                             logging.info("\t Early stopping.")
                             break
-            logging.info("\t Pretrain phase 1 finished Optimization finished, get the best training epoch")
+            logging.info("\t Pretrain phase 1 optimization finished, get the best training epoch")
         else:
             best_epoch = args.max_epochs
 
-        logging.info("\t Start the pretrain phase 2: both train and valid data")
+        logging.info("\t Start the pretrain phase 2: use all known data")
 
         # * reset model and optimizer, train from scratch,
         # ? we may change to continue previous training results
@@ -295,7 +298,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
             # write losses 
             writer.add_scalar('train_loss', train_loss, step)
         
-        logging.info("\t Pretrain phase 2 finished Optimization finished.")
+        logging.info("\t Pretrain phase 2 optimization finished.")
 
         # save model
         logging.info(f"\t Saving model in {args.save_dir}.")
@@ -320,6 +323,9 @@ def active_learning_running(args, dataset, model, writer) -> None:
     previous_false_set = set()
 
     unexplored_triples_set = tensor2set(unexplored_triples)
+
+    new_true_list = []
+    new_false_list = []
 
     # continue active completion
     completion_ratio = len(init_triples) / (len(init_triples) + len(unexplored_triples))  # unexplored does not have reciprocal relations
@@ -372,7 +378,7 @@ def active_learning_running(args, dataset, model, writer) -> None:
                         h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
                         # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
                         query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
-                        scores, _ = model(query, eval_mode=True) # (BS x N_ent) (h x t)
+                        scores, _ = model(query, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
 
                         # store to heap and screen out unqualified ones in parallel style
                         remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
@@ -402,12 +408,9 @@ def active_learning_running(args, dataset, model, writer) -> None:
         # get answer 
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
-        new_true = []
-        new_false = []
+       
 
-        new_true_set = set()
-        new_false_set = set()
-
+      
         # active verified are triples in unexplored part
         for node in heap:
             
@@ -419,70 +422,72 @@ def active_learning_running(args, dataset, model, writer) -> None:
             rec_triple_tuple = (triple_tuple[2], (triple_tuple[1] + model.n_rel) % (model.n_rel * 2), triple_tuple[0])
 
             if triple_tuple in unexplored_triples_set:
-                new_true.append(triple)
-                new_true.append(rec_triple)
-                new_true_set.add(triple_tuple)
-                new_true_set.add(rec_triple_tuple)
+                new_true_list.append(triple)
+                new_true_list.append(rec_triple)
+                previous_true_set.add(triple_tuple) # previous == seen
+                previous_true_set.add(rec_triple_tuple)
                 unexplored_triples_set.remove(triple_tuple)
                 unexplored_triples_set.remove(rec_triple_tuple)
                 
             else:
-                new_false.append(triple)
-                new_false.append(rec_triple)
-                new_false_set.add(triple_tuple)
-                new_false_set.add(rec_triple_tuple)
+                new_false_list.append(triple)
+                new_false_list.append(rec_triple)
+                previous_false_set.add(triple_tuple)
+                previous_false_set.add(rec_triple_tuple)
             
-        if new_true:
-            new_true = torch.stack(new_true) 
-        if new_false:
-            new_false = torch.stack(new_false)
-
-
-
         # update completion ratio
-        completion_ratio = (len(previous_true) + len(new_true)) / (len(init_triples) + len(unexplored_triples))
+        completion_ratio = (len(previous_true_set)) / (len(init_triples) + len(unexplored_triples))
 
         # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
 
-        # incremental training
-
-        # modifed the learning rate and other settings of optimizer
-        optimizer.optimizer.learning_rate = args.incremental_learning_rate
-        optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
-        model.train()
-
-        # training 
-        avg_incre_loss = 0
-        for incre_step in range(args.incremental_learning_epoch):
-            incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
-            writer.add_scalar('incre_loss', incre_loss, incre_step)
-            avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
-
-        logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
-
-        # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
-
-
-        # TODO think: do we just need to focus on the difference between ce and negative samples?
-
-        # all-together and only utilize the true examples
-        
-        
-        # put the new triples to previous
-        # todo here is ambiguous, write in a better way
-        if len(new_true):
-            previous_true = torch.cat((previous_true, new_true), 0) 
-        if len(new_false) and previous_false != None: 
-            previous_false = torch.cat((previous_false, new_false), 0) 
-        elif len(new_false):
-            previous_false = new_false
-        
-        previous_true_set |= new_true_set
-        previous_false_set |= new_false_set
-
-
         # TODO dict ?
+        if (step + 1) % args.update_freq == 0:
+            
+            # merge previous triples into tensor
+            # if new_true_list:
+            #     new_true = torch.stack(new_true)
+            # if new_false_list:
+            #     new_false = torch.stack(new_false)
+            
+            new_true = torch.stack(new_true_list) if new_true_list else None
+            new_false = torch.stack(new_false_list) if new_false_list else None
 
+            # reset list
+            new_true_list = []
+            new_false_list = []
+
+            # incremental training
+
+            # modifed the learning rate and other settings of optimizer
+            optimizer.optimizer.learning_rate = args.incremental_learning_rate
+            optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
+            model.train()
+
+            # training 
+            avg_incre_loss = 0
+            for incre_step in range(args.incremental_learning_epoch):
+                incre_loss = optimizer.incremental_epoch(previous_true, previous_false, new_true, new_false, args.incremental_learning_method, args)  
+                writer.add_scalar('incre_loss', incre_loss, incre_step)
+                avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
+
+            logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
+
+            # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
+
+
+            # TODO think: do we just need to focus on the difference between ce and negative samples?
+
+            # all-together and only utilize the true examples
+
+            # put the new triples to previous
+            # todo here is ambiguous, write in a better way
+            if len(new_true):
+                previous_true = torch.cat((previous_true, new_true), 0) 
+            if len(new_false) and previous_false != None: 
+                previous_false = torch.cat((previous_false, new_false), 0) 
+            elif len(new_false):
+                previous_false = new_false
+  
         # todo move to a function
         s = "After " + str(step) + "'th step of active learning."
         print(f"{DOTS} {s:<50} {DOTS}")
