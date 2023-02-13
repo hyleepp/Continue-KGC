@@ -18,6 +18,7 @@
                 "--setting", "active_learning",
                 "--init_ratio", "0.9",
                 "--max_epochs", "200",
+                "--update_freq", "2",
                 "--patient", "1",
                 "--regularizer", "DURA_RESCAL",
                 "--reg_weight", "0.05",
