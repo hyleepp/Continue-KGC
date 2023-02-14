@@ -351,6 +351,12 @@ class ActiveLearning(object):
         return 
     
     def get_candidate_for_verification(self) -> list:
+        """try to give each possible link (or some of them, since we may have a filter function),
+        and return the top-k highest candidates for verification in next step. Here we use a heap to help sort. 
+
+        Returns:
+            list: heap of possible candidates, each elements contains two thins, (score, triple)
+        """
 
         self.model.eval()
         with torch.no_grad():
@@ -424,7 +430,18 @@ class ActiveLearning(object):
 
         return heap
     
-    def verification(self, heap) -> float:
+    def verification(self, heap) -> tuple:
+        """try to verify the candidate proposed by model are true or false in real graph.
+        In real world, this part should be done by human, yet we use the triples in unexplored set as an alternative solution
+
+        Args:
+            heap (list): the heap of (score, triple)
+
+        Returns:
+            true_count:  how many candidates are true.
+            false_count: how many candidates are false.
+            completion_ratio: current completion ratio.
+        """
 
         # verification
         true_count, false_count = 0, 0
@@ -433,6 +450,7 @@ class ActiveLearning(object):
             # see if this triple in unexplored 
             triple = node.triple
             triple_tuple = tuple(node.triple.tolist())
+            # build rec triple
             rec_triple = triple.clone()
             rec_triple[0], rec_triple[1], rec_triple[2] = triple[2], (triple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple[0]
             rec_triple_tuple = (triple_tuple[2], (triple_tuple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple_tuple[0])
@@ -471,7 +489,13 @@ class ActiveLearning(object):
 
         return
     
-    def incremental_learning(self, step):
+    def incremental_learning(self, step: int) -> None:
+        """use the previous verified data (both true and false) to train the model incrementally. 
+        It should be noticed that incremental is not strict, since some baselines are not.
+
+        Args:
+            step (int): the current step 
+        """
         # incremental learning
         # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
         logging.info(f"\t Start incremental learning at step {step}")
@@ -515,6 +539,13 @@ class ActiveLearning(object):
         return
 
     def active_learning_running(self) -> None:
+        """The setting that gives a set of known data (init triples), and continue completing it while human in the loop.
+
+        It the repeat the following procedure:
+        1. Model predict some possible missing links
+        2. Human verified it (Or GT in experiments)
+        3. update the model
+        """
 
         # TODO build filters
         self.filters = None
