@@ -251,6 +251,7 @@ class ActiveLearning(object):
         regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
         optim_method = getattr(torch.optim, args.optimizer)(self.model.parameters(), lr=args.pretrain_learning_rate)
         optimizer = KGOptimizer(self.model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
+        self.model.train()
 
         return optimizer
         
@@ -469,10 +470,51 @@ class ActiveLearning(object):
         self.writer.add_scalar("completion_ratio", completion_ratio, step)
 
         return
+    
+    def incremental_learning(self, step):
+        # incremental learning
+        # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
+        logging.info(f"\t Start incremental learning at step {step}")
+        
+        new_true = torch.stack(self.new_true_list) if self.new_true_list else None
+        new_false = torch.stack(self.new_false_list) if self.new_false_list else None
+
+        # reset list
+        self.new_true_list = []
+        self.new_false_list = []
+
+        # incremental training
+        optimizer = self.init_optimizer()
+
+        # training 
+        avg_incre_loss = 0
+        for incre_step in range(args.incremental_learning_epoch):
+            incre_loss = optimizer.incremental_epoch(self.previous_true, self.previous_false, new_true, new_false, args.incremental_learning_method, args)  
+            self.writer.add_scalar('incre_loss', incre_loss, incre_step)
+            avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
+
+        logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
+        logging.info("\t Incremental learning finished.")
+
+        # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
+
+
+        # TODO think: do we just need to focus on the difference between ce and negative samples?
+
+        # all-together and only utilize the true examples
+
+        # put the new triples to previous
+        # todo here is ambiguous, write in a better way
+        if len(new_true):
+            self.previous_true = torch.cat((self.previous_true, new_true), 0) 
+        if len(new_false) and self.previous_false != None: 
+            self.previous_false = torch.cat((self.previous_false, new_false), 0) 
+        elif len(new_false):
+            self.previous_false = new_false
+        
+        return
 
     def active_learning_running(self) -> None:
-
-        # lazy way to put one function belong to a class
 
         # TODO build filters
         self.filters = None
@@ -480,12 +522,9 @@ class ActiveLearning(object):
 
         self.pretrain()
 
-        logging.info("\t Incremental learning start.")
-        optimizer = self.init_optimizer()
-
         # continue active completion
         completion_ratio = len(self.init_triples) / (len(self.init_triples) + len(self.unexplored_triples))  # unexplored does not have reciprocal relations
-        logging.info(f"Completion {completion_ratio} -> {self.args.expected_completion_ratio} Starts.")
+        logging.info(f"Continue completion: {completion_ratio:.4f} -> {self.args.expected_completion_ratio} Starts.")
         step = 0
 
         while completion_ratio < self.args.expected_completion_ratio:
@@ -494,58 +533,13 @@ class ActiveLearning(object):
 
             candidates = self.get_candidate_for_verification()
             true_count, false_count, completion_ratio = self.verification(candidates)
-
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
-            # TODO dict ?
-            if step % args.update_freq == 0:
-                # incremental learning
-                # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
-                logging.info(f"\t Start incremental learning at step {step}")
-                
-                new_true = torch.stack(self.new_true_list) if self.new_true_list else None
-                new_false = torch.stack(self.new_false_list) if self.new_false_list else None
-
-                # reset list
-                self.new_true_list = []
-                self.new_false_list = []
-
-                # incremental training
-
-                # modifed the learning rate and other settings of optimizer
-                optimizer.optimizer.learning_rate = args.incremental_learning_rate
-                optimizer.optimizer.param_groups[0]['lr'] = args.pretrain_learning_rate # reset optimizer
-                self.model.train()
-
-                # training 
-                avg_incre_loss = 0
-                for incre_step in range(args.incremental_learning_epoch):
-                    incre_loss = optimizer.incremental_epoch(self.previous_true, self.previous_false, new_true, new_false, args.incremental_learning_method, args)  
-                    self.writer.add_scalar('incre_loss', incre_loss, incre_step)
-                    avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
-
-                logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
-                logging.info("\t Incremental learning finished.")
-
-                # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
-
-
-                # TODO think: do we just need to focus on the difference between ce and negative samples?
-
-                # all-together and only utilize the true examples
-
-                # put the new triples to previous
-                # todo here is ambiguous, write in a better way
-                if len(new_true):
-                    self.previous_true = torch.cat((self.previous_true, new_true), 0) 
-                if len(new_false) and self.previous_false != None: 
-                    self.previous_false = torch.cat((self.previous_false, new_false), 0) 
-                elif len(new_false):
-                    self.previous_false = new_false
-    
-
+            if step % self.args.update_freq == 0:
+                self.incremental_learning(step)
             
-        print(f"Completion finished at step {step}.")
+        logging.info(f"\t Completion finished at step {step}.")
+
         return
 
 
