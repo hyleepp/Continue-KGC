@@ -6,7 +6,6 @@ import json
 
 import torch
 
-from .utils import dataset_utils
 
 '''Switch cases'''
 SETTING2SPLITS = {
@@ -59,6 +58,27 @@ class KGDataset(object):
         # TODO add the debug mode
         return 
 
+        
+    def add_reciprocal(self, triples):
+        """add reciprocal triple for each triple, i.e. add (t, r + n_rel, h) for each (h, r, t)
+
+        Args:
+            triples (tensor): triples 
+
+        Returns:
+            triples: concatenated triples
+        """
+
+        copy = triples.clone().detach()
+        tmp = copy.clone().detach()[:, 0]
+        copy[:, 0] = copy[:, 2]
+        copy[:, 2] = tmp
+        copy[:, 1] = copy[:, 1] + self.n_rel
+        # copy[:, 0], copy[:, 1], copy[:, 2] = copy[:, 2], copy[:, 1] + self.n_rel, copy[:, 0]
+        triples = torch.cat((triples, copy), dim=0)
+
+        return triples
+
     def get_triples(self, split, use_reciprocal=False):
         """get triples in a split
 
@@ -77,13 +97,7 @@ class KGDataset(object):
 
             # add reciprocal relations
             if use_reciprocal:
-                copy = triples.clone().detach()
-                tmp = copy.clone().detach()[:, 0]
-                copy[:, 0] = copy[:, 2]
-                copy[:, 2] = tmp
-                copy[:, 1] = copy[:, 1] + self.n_rel
-                # copy[:, 0], copy[:, 1], copy[:, 2] = copy[:, 2], copy[:, 1] + self.n_rel, copy[:, 0]
-                triples = torch.cat((triples, copy), dim=0)
+                triples = self.add_reciprocal(triples)
             
         except KeyError:
             print(f"Current setting \"{self.setting}\" does not have the split \"{split}\"")

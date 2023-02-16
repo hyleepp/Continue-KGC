@@ -16,7 +16,7 @@ class KGOptimizer(nn.Module):
         super().__init__()
 
         # check args 
-        assert neg_size == -1 or neg_size > 1, f'The given argument negative sample size {neg_size} is not implemented, please choose -1 or a number greater than 0.'
+        assert neg_size == -1 or neg_size >= 1, f'The given argument negative sample size {neg_size} is not implemented, please choose -1 or a number greater than 0.'
         
 
         self.model = model 
@@ -154,7 +154,7 @@ class KGOptimizer(nn.Module):
             total_loss: avg loss of the given batch
         """
 
-    # TODO change the arguments, replaced with previous_true, prevoius_false, cur_true, cur_false
+        # TODO change the arguments, replaced with previous_true, prevoius_false, cur_true, cur_false
 
         b_begin = 0
         total_loss = 0
@@ -172,13 +172,12 @@ class KGOptimizer(nn.Module):
                 self.optimizer.step()
             elif mode == 'valid':
                 loss = self.calculate_loss(input_batch)
-                total_loss += loss
 
             # prepare for next batch
             b_begin += self.batch_size
 
             # update tqdm bar
-            total_loss += loss
+            total_loss += loss.item()
             counter += 1
             bar.update(input_batch.shape[0])
             bar.set_postfix(loss=f'{loss.item():.4f}')

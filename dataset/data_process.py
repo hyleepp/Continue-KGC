@@ -1,5 +1,6 @@
 import os
 import random
+from random import shuffle
 import json
 
 import pickle
@@ -59,6 +60,49 @@ def merge_files(file_path, drop_first_line = True):
     # write triples
     with open(file_path + '/total' + '.txt', 'w+') as f:
         f.writelines(total_triples)
+    
+def write_triples(file_path, triples):
+    """transform triples into index form and write it done
+
+    Args:
+        file_path (str): file path
+        triples (list): e.g., (I, like, dog)
+    """
+
+    # get dict
+    entity2id, relation2id = get_entity_and_relation_dict(triples)
+    
+    # transformed text to id
+    transformed_triples = []
+    for head, rel, tail in triples:
+        head_id, rel_id, tail_id = entity2id[head], relation2id[rel], entity2id[tail]
+        triple = [head_id, rel_id, tail_id]
+        triple = ' '.join(list(map(lambda x: str(x), triple))) + '\n'
+        transformed_triples.append(triple)
+
+
+    print(transformed_triples[0])
+    # write in a total file
+    with open(file_path + '/total' + '.txt', 'w+') as f:
+        f.writelines(transformed_triples)
+    
+    # transform entity2id and relation2id to strings
+    entity2id_to_write = []
+    for k, v in entity2id.items():
+        entity2id_to_write.append(' '.join([k, str(v)]) + '\n')
+
+    relation2id_to_write = []
+    for k, v in relation2id.items():
+        relation2id_to_write.append(' '.join([k, str(v)]) + '\n')
+
+    # save entity2id and relation2id
+    with open(file_path + '/entity2id.txt', 'w+') as f:
+        f.writelines(entity2id_to_write)
+
+    with open(file_path + '/relation2id.txt', 'w+') as f:
+        f.writelines(relation2id_to_write)
+
+    return
 
 def switch_rel_and_tail(file_path, file_name):
     '''
@@ -161,6 +205,22 @@ def merge_fb(file_path):
     with open(file_path + '/relation2id.txt', 'w+') as f:
         f.writelines(relation2id_to_write)
 
+def merge_wiki(file_path):
+
+    splits = ['train_2015', 'valid_2015', 'test_2015']
+    total_triples = []
+    for split in splits:
+        with open(file_path + '/' + split + '.csv', 'r') as f:
+            triples = f.readlines()[1:] # drop the first line
+            print(len(triples))
+            total_triples.extend(triples)
+    triples = [triple.strip().split(',') for triple in total_triples]
+    print(triples[:10])
+
+    write_triples(file_path, triples)
+
+    return
+
 def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123): 
 
     # generate a folder
@@ -172,6 +232,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     
     # split the triples 
     triples = [triple.strip().split() for triple in triples]
+    shuffle(triples)
 
     # generate the scaffold, i.e., ensure every entities appear in init_shape
     n_ent, n_rel = dataset_utils.get_entity_and_relation_size(triples)
@@ -237,8 +298,10 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     return
 
 
+
 if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/WN18', 0.9)
+    generate_active_learning_dataset('data/FB15K', 0.9)
+    # merge_wiki('data_raw/wikikg-v2')

@@ -214,13 +214,25 @@ class ActiveLearning(object):
         
         self.args = args # todo write in a better way
         self.dataset, self.model, self.writer = initialization(args)
+        self.device = self.model.device
 
         self.best_epoch = args.max_epochs # in  phase 1 of pretrain, it will be changed to the real best epoch, which is used in phase 2 of pretrain
 
         # Data Loading
+        # TODO use dataloader
+        self.max_batch_for_inference = self.get_max_batch_for_inference() # this need to be done before load the following data, since it will occupy more memory
         self.init_triples = self.dataset.get_triples('init', use_reciprocal=True).to(args.device) # here we consider training is default to use reciprocal setting
         self.unexplored_triples = self.dataset.get_triples('unexplored', use_reciprocal=True).to(args.device)
-        del self.dataset
+
+        # TODO refactor
+        triples_raw = self.dataset.get_triples('init')
+        n_init = int(self.args.train_ratio * len(triples_raw))
+        train_triples, valid_triples = triples_raw[:n_init], triples_raw[n_init:]
+        train_triples = self.dataset.add_reciprocal(train_triples) # only train needs rec
+        self.train_triples = train_triples.to(args.device)
+        self.valid_triples = valid_triples.to(args.device)
+        del triples_raw, train_triples, valid_triples
+
 
         # used in incremental learning
         self.previous_true = self.init_triples # rename for clarity
@@ -233,6 +245,7 @@ class ActiveLearning(object):
 
         self.new_true_list = []
         self.new_false_list = []
+
     
     def get_validation_metric(self, valid_triples) -> float:
 
@@ -258,6 +271,7 @@ class ActiveLearning(object):
     def pretrain(self) -> None:
         """get a pretrained model. if specify a trained one, load it, otherwise train one.
         """
+
     
         if not self.args.pretrained_model_id:
 
@@ -311,8 +325,9 @@ class ActiveLearning(object):
         # prepare triples
         if phase == 'train and valid':
             # seprate the init set into training and eval set
-            train_count = int(len(self.init_triples) * self.args.train_ratio)
-            train_triples, valid_triples = self.init_triples[:train_count], self.init_triples[train_count:]
+            # train_count = int(len(self.init_triples) * self.args.train_ratio)
+            # train_triples, valid_triples = self.init_triples[:train_count], self.init_triples[train_count:]
+            train_triples, valid_triples = self.train_triples, self.valid_triples
         else:
             train_triples = self.init_triples
 
@@ -348,7 +363,48 @@ class ActiveLearning(object):
                         if counter == self.args.patient:
                             logging.info("\t Early stopping.")
                             break
+
+        if phase == 'train and valid':
+            del self.train_triples, self.valid_triples # not be used any more
+
         return 
+
+    def get_max_batch_for_inference(self):
+        ''' get the max batch size when try to get candidates.
+            since the following process involves a tensor with dynamic shape (remain_scores_idx),
+            it is hard to choose a good number once for all.
+            The result of this function is good enough
+        '''
+        # todo handle the multi-card problem
+
+        torch.cuda.empty_cache()
+        before_memory = torch.cuda.memory_allocated(0)
+        # run a simple batch
+        query = torch.ones((1, 2)).type(torch.LongTensor)
+        query = query.to(self.device)
+        scores, _ = self.model(query, eval_mode=True, require_reg=False)
+        remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores 
+        after_memory = torch.cuda.memory_allocated(0)
+        total_memory = torch.cuda.get_device_properties(0).total_memory
+        # total_memory = torch.cuda.memory_reserved(0)
+        del query, scores, remain_scores_idx
+        torch.cuda.empty_cache()
+        right = (total_memory - before_memory) // int(after_memory - before_memory) * 2 # as the upper bound
+        left = 0
+
+        # dichotomy
+        while left < right + 1 and (right - left) / right > 0.01: # does not need to be very precise
+            mid = (left + right) // 2
+            try:
+                query = torch.ones((mid, 2)).type(torch.LongTensor)
+                query = query.to(self.device)
+                scores, _ = self.model(query, eval_mode=True, require_reg=False)
+                remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores 
+                left = mid
+            except:
+                right = mid
+
+        return left + 1
     
     def get_candidate_for_verification(self) -> list:
         """try to give each possible link (or some of them, since we may have a filter function),
@@ -390,41 +446,47 @@ class ActiveLearning(object):
             # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
             batch_size = 1 # todo fix the the problem of single input
+            
+            # try to achieve the maximum capacity in the following progress
+
+            
             with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 cur_seen = set()
                 while ent_begin < len(focus_nodes):
-                    rel_begin = 0
-                    while rel_begin < len(focus_relations[0]):
-                        h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_begin]
-                        # h, r = focus_nodes[ent_begin], focus_relations[ent_begin, rel_begin]
+                    rel_idx = 0
+                    while rel_idx < len(focus_relations[0]):
+                        h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_idx]
                         query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
                         scores, _ = self.model(query, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
 
                         # store to heap and screen out unqualified ones in parallel style
                         remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
-                        remain_scores = scores[torch.where(scores > heap[0].value)]
 
                         # update heap
                         # TODO see if we let this run on cpu and we continue gpu processes 
                         for i in range(len(remain_scores_idx)):
                             lhs_idx, t = remain_scores_idx[i]
-                            if remain_scores[i] > heap[0].value:
+                            score = scores[lhs_idx, t]
+                            if score > heap[0].value:
                                 triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
                                 # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
                                 triple_tuple = tuple(triple.tolist())
                                 if triple_tuple not in self.previous_true_set and \
                                 triple_tuple not in self.previous_false_set and \
                                 triple_tuple not in cur_seen: # todo find some better way to do so
-                                    heapq.heapreplace(heap, HeapNode((remain_scores[i], triple)))
+                                    heapq.heapreplace(heap, HeapNode((score.item(), triple)))
                                     reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
                                     cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
                         
-                        rel_begin += 1
+                        rel_idx += 1
                         bar.update(len(h))
                         bar.set_postfix(min_score=f'{heap[0].value:.3f}')
+
+                        del query, scores, remain_scores_idx
+                        torch.cuda.empty_cache()
                     ent_begin += batch_size
-                    batch_size = min(10 * batch_size, args.active_num) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+                    batch_size = min(10 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
 
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
@@ -529,11 +591,11 @@ class ActiveLearning(object):
 
         # put the new triples to previous
         # todo here is ambiguous, write in a better way
-        if len(new_true):
+        if new_true is not None:
             self.previous_true = torch.cat((self.previous_true, new_true), 0) 
-        if len(new_false) and self.previous_false != None: 
+        if new_false is not None and self.previous_false != None: 
             self.previous_false = torch.cat((self.previous_false, new_false), 0) 
-        elif len(new_false):
+        elif new_false is not None:
             self.previous_false = new_false
         
         return

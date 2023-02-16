@@ -171,15 +171,15 @@ class KGModel(nn.Module, ABC):
         hits_at = {}
 
         for m in ["rhs", "lhs"]:
-            q = triples.clone().detach()
+            q = triples.clone()
             if m == "lhs":
-                tmp = q[:, 0]
+                tmp = torch.clone(q[:, 0])
                 q[:, 0] = q[:, 2]
                 q[:, 2] = tmp
-                q[:, 1] = q[:, 1] = self.n_rel
+                q[:, 1] = q[:, 1] + self.n_rel
                 
             # get ranking
-            ranks = self.get_ranking(q, filter=[m], batch_size=batch_size)
+            ranks = self.get_ranking(q, filter=None, batch_size=batch_size)
             mean_rank[m] = torch.mean(ranks).item()
             mean_reciprocal_rank[m] = torch.mean(1. / ranks).item()
             hits_at[m] = torch.FloatTensor((list(map(
