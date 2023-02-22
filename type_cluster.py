@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 import torch.nn.functional as F
 from sklearn.manifold import TSNE
+from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
 from collections import Counter, OrderedDict
 import nltk
@@ -11,6 +12,7 @@ from nltk.parse.stanford import StanfordDependencyParser
 import numpy as np
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
+import brewer2mpl
 import re
 
 # nltk.download('punkt')
@@ -70,7 +72,7 @@ def get_embedding(model, tokenizer, sentences):
 # 3. 聚类，考虑根据纯text信息或者用个bert啥的
 
 
-def tsne_visualize(sentence_embeddings, freq=None):
+def tsne_visualize(sentence_embeddings, freq=None, labels=None):
     reducted_embeddings = TSNE(
         n_components=3, learning_rate='auto', init='random', n_iter=10000).fit_transform(sentence_embeddings)
 
@@ -82,7 +84,7 @@ def tsne_visualize(sentence_embeddings, freq=None):
     else:
         freq = np.sqrt(freq)
         freq = freq / np.max(freq)
-        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], reducted_embeddings[:, 2], alpha=freq)
+        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], reducted_embeddings[:, 2], alpha=freq, c=labels)
         
     plt.savefig('vis.png')
     return
@@ -160,6 +162,8 @@ if __name__ == "__main__":
 
     # word_embeddings = torch.cat(word_embeddings, dim=0)
     word_embeddings = np.stack(word_embeddings, axis=0)
-    tsne_visualize(word_embeddings, freqs)
+    clustering = AgglomerativeClustering(n_clusters=100).fit(word_embeddings)
+    labels = clustering.labels_
+    tsne_visualize(word_embeddings, freqs, labels)
 
     print('over')
