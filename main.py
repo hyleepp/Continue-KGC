@@ -62,7 +62,7 @@ def prepare_parser():
         "--dyn_scale", action="store_true", help="whether or not add a learnable factor"
     )
     parser.add_argument(
-        "--init_ratio", type=float, required=True, choices=[0.7, 0.8, 0.9], help="the initial ratio of the triples"
+        "--init_ratio", type=float, required=True, choices=[0.7, 0.8, 0.9, 0.95, 0.985], help="the initial ratio of the triples"
     )
 
     '''Pretrain Part '''

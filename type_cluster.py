@@ -15,6 +15,8 @@ from gensim.models import KeyedVectors
 import brewer2mpl
 import re
 
+
+
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
 # nltk.download('wordnet')
@@ -73,14 +75,18 @@ def get_embedding(model, tokenizer, sentences):
 
 
 def tsne_visualize(sentence_embeddings, freq=None, labels=None):
+    palette = 'hsv'  # 调色板名称
+    cmap = plt.get_cmap(palette)
     reducted_embeddings = TSNE(
-        n_components=3, learning_rate='auto', init='random', n_iter=10000).fit_transform(sentence_embeddings)
+        n_components=3, learning_rate='auto', init='random', n_iter=1000).fit_transform(sentence_embeddings)
 
     fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
+    # ax = fig.add_subplot(projection='3d')
+    ax = fig.add_subplot()
 
     if freq is None:
-        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1])
+        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], c=labels, cmap=cmap)
+        # ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], reducted_embeddings[:, 2], c=labels)
     else:
         freq = np.sqrt(freq)
         freq = freq / np.max(freq)
@@ -124,32 +130,32 @@ if __name__ == "__main__":
     word2count = OrderedDict(counter.most_common())
     words = list(word2count.keys())
 
-    # model_name = 'sentence-transformers/all-MiniLM-L6-v2'
-    # tokenizer, model = load_model(model_name)
+    model_name = 'sentence-transformers/all-MiniLM-L6-v2'
+    tokenizer, model = load_model(model_name)
 
-    FASTTEXTFILE="~/word2vec/wiki-news-300d-1M.vec"
-    model=KeyedVectors.load_word2vec_format(FASTTEXTFILE,limit=500000)
-    word_embeddings = []
-    freqs = []
-    for word in words:
-        if word in model.key_to_index.keys():
-            word_embeddings.append(model[word]) 
-            freqs.append(word2count[word])
-        else:
-            print(word)
+    # FASTTEXTFILE="~/word2vec/wiki-news-300d-1M.vec"
+    # model=KeyedVectors.load_word2vec_format(FASTTEXTFILE,limit=500000)
+    # word_embeddings = []
+    # freqs = []
+    # for word in words:
+    #     if word in model.key_to_index.keys():
+    #         word_embeddings.append(model[word]) 
+    #         freqs.append(word2count[word])
+    #     else:
+    #         print(word)
 
 
-    # batch_size = 1000
-    # batch_begin = 0
+    batch_size = 1000
+    batch_begin = 0
 
-    # des_embeddings = []
+    des_embeddings = []
 
-    # while batch_begin < len(descriptions):
-    #     batch_data = descriptions[batch_begin:batch_begin + batch_size]
-    #     des_embeddings.append(get_embedding(model, tokenizer, batch_data))
-    #     batch_begin += batch_size
+    while batch_begin < len(descriptions):
+        batch_data = descriptions[batch_begin:batch_begin + batch_size]
+        des_embeddings.append(get_embedding(model, tokenizer, batch_data))
+        batch_begin += batch_size
 
-    # des_embeddings = torch.cat(des_embeddings, dim=0)
+    des_embeddings = torch.cat(des_embeddings, dim=0)
 
     # word_embeddings = []
 
@@ -161,9 +167,10 @@ if __name__ == "__main__":
     #     batch_begin += batch_size
 
     # word_embeddings = torch.cat(word_embeddings, dim=0)
-    word_embeddings = np.stack(word_embeddings, axis=0)
-    clustering = AgglomerativeClustering(n_clusters=100).fit(word_embeddings)
+    # word_embeddings = np.stack(word_embeddings, axis=0)
+    des_embeddings = des_embeddings.detach().cpu().numpy()
+    clustering = AgglomerativeClustering(n_clusters=50).fit(des_embeddings)
     labels = clustering.labels_
-    tsne_visualize(word_embeddings, freqs, labels)
+    tsne_visualize(des_embeddings, None, labels)
 
     print('over')

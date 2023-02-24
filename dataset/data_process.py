@@ -303,5 +303,5 @@ if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/FB15K', 0.9)
+    generate_active_learning_dataset('data/WN18', 0.7)
     # merge_wiki('data_raw/wikikg-v2')
