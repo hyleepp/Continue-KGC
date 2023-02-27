@@ -8,13 +8,39 @@ from sklearn.cluster import AgglomerativeClustering
 import matplotlib.pyplot as plt
 from collections import Counter, OrderedDict
 import nltk
-from nltk.parse.stanford import StanfordDependencyParser
+# from nltk.parse.stanford import StanfordDependencyParser
 import numpy as np
 from gensim.models import word2vec
 from gensim.models import KeyedVectors
 import brewer2mpl
 import re
+from sklearn.metrics import pairwise_distances
+from collections import defaultdict
+import pickle
 
+
+# download the required resources
+# nltk.download('punkt')
+# nltk.download('averaged_perceptron_tagger')
+# nltk.download('dependency_treebank')
+
+# load the dependency parser
+dep_parser = nltk.parse.DependencyGraph
+
+# create a sentence to parse
+sentence = "The quick brown fox jumps over the lazy dog."
+
+# tokenize the sentence
+tokens = nltk.word_tokenize(sentence)
+
+# tag the tokens
+pos_tags = nltk.pos_tag(tokens)
+
+# # parse the sentence
+# dep_graph = dep_parser.parse(pos_tags)
+
+# # print the parsed dependencies
+# print(dep_graph.to_conll(10))
 
 
 # nltk.download('punkt')
@@ -24,18 +50,39 @@ import re
 
 
 def load_data(path):
+    # key means sth like /m/012qdp
+    # qid means id in wiki, like Q5
+    # idx means id in triples, int number, i-th entity
     with open(os.path.join(path, 'entity2wikidata.json'), 'r') as f:
-        json_dict = json.load(f)
+        entity2wiki = json.load(f)
+        key2qid = {}
+        for key, value in entity2wiki.items():
+            key2qid[key] = value['wikidata_id']
 
-    id2description = {}
-    descriptions = []  # list for computation
-    for k, v in json_dict.items():
+
+    with open(os.path.join(path, 'entity2id.txt'), 'r') as f:
+        lines = f.readlines()
+        key2idx = {} 
+        for line in lines:
+            key, idx = line.strip().split()
+            idx = int(idx)
+            key2idx[key] = idx
+        
+    idx2class = {}
+    class_names = []
+
+    with open(os.path.join(path, "entity_type.json"), 'r') as f:
+        qid2class = json.load(f)
+    for k, v in entity2wiki.items():
         # 可能存在none的情况，需要特殊处理，占比也不多
         des = v['description'] if v['description'] else ''
-        id2description[k] = des
-        descriptions.append(des)
-
-    return id2description, descriptions
+        wiki_id = v['wikidata_id']
+        class_name = qid2class[wiki_id]['parent_entity_name']
+        idx = key2idx[k]
+        idx2class[idx] = class_name
+        class_names.append(class_name)
+    
+    return idx2class, class_names 
 
 # 2. 获得embedding
 
@@ -75,10 +122,11 @@ def get_embedding(model, tokenizer, sentences):
 
 
 def tsne_visualize(sentence_embeddings, freq=None, labels=None):
+    # distance_matrix = pairwise_distances(sentence_embeddings, sentence_embeddings, metric='cosine', n_jobs=-1)
     palette = 'hsv'  # 调色板名称
     cmap = plt.get_cmap(palette)
     reducted_embeddings = TSNE(
-        n_components=3, learning_rate='auto', init='random', n_iter=1000).fit_transform(sentence_embeddings)
+        n_components=2, learning_rate='auto', init='random', n_iter=1000, metric='cosine').fit_transform(sentence_embeddings)
 
     fig = plt.figure()
     # ax = fig.add_subplot(projection='3d')
@@ -90,45 +138,100 @@ def tsne_visualize(sentence_embeddings, freq=None, labels=None):
     else:
         freq = np.sqrt(freq)
         freq = freq / np.max(freq)
-        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], reducted_embeddings[:, 2], alpha=freq, c=labels)
+        ax.scatter(reducted_embeddings[:, 0], reducted_embeddings[:, 1], alpha=freq, c=labels)
         
     plt.savefig('vis.png')
     return
 
 def is_noun(pos): return pos == 'NN' or pos == 'NNS'
 
+def generate_relation_filter(triples, id2class, n_rel):
+    # generate the relation filter based on entity class (like human).
+
+    class_filte_relation = defaultdict(set)
+    for h, r, t in triples:
+        try:
+            # there may have some entity miss the corresponding descriptions
+            h_class, t_class = id2class[h], id2class[t]
+            class_filte_relation[h_class].add(r)
+            class_filte_relation[t_class].add(r + n_rel)
+        except:
+            continue
+    
+    return class_filte_relation
+
+        
+
+    
 if __name__ == "__main__":
 
     path = 'data/FB15K/'
-    id2description, descriptions = load_data(path)
+    idx2description, descriptions = load_data(path)
 
-    words = []
-    lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
-    for des in descriptions:
-        # new_words = des.split()
-        # new_words = [word.strip(",.'") for word in new_words]
-        des = des.replace('-', ' ')
-        des = des.replace('–', ' ') # data is not clean
-        des = des.replace('/', ' ')
-        tokenized = nltk.word_tokenize(des)
-        # modified = []
-        # if have both, like singer, song writer, we only remain the last one, considering the case like co-founder
-        # for word in tokenized:
-        #     word = word.strip('–/') # contains 1999-, and/or
-        #     word = re.split('–/', word)
-        #     if len(word) > 1:
-        #         print(word)
-        #         if re.match(r'\D*\d+', word):
-        #             continue # filter out all numbers
-        #     modified.append(word[-1])
-        nouns = [word for (word, pos) in nltk.pos_tag(tokenized) if is_noun(pos)]
-        nouns = [lemmatizer.lemmatize(word, 'n') for word in nouns]
+    # filters
+    # 尝试只保留第一个名词
+    # filted = []
+    # for description in descriptions:
+    #     if not description:
+    #         filted.append('') # none
+    #     else:
+    #         words = description.split() 
+    #         pos_tags = nltk.pos_tag(words)
+    #         filted_sent=  [word for word, pos in pos_tags if pos == 'NN']
+    #         filted.append(' '.join(filted_sent))
 
-        words.extend(nouns)
+    
 
-    counter = Counter(words)
-    word2count = OrderedDict(counter.most_common())
-    words = list(word2count.keys())
+    # words = []
+    # lemmatizer = nltk.stem.wordnet.WordNetLemmatizer()
+    # for des in descriptions:
+    #     # new_words = des.split()
+    #     # new_words = [word.strip(",.'") for word in new_words]
+    #     des = des.replace('-', ' ')
+    #     des = des.replace('–', ' ') # data is not clean
+    #     des = des.replace('/', ' ')
+    #     tokenized = nltk.word_tokenize(des)
+    #     # modified = []
+    #     # if have both, like singer, song writer, we only remain the last one, considering the case like co-founder
+    #     # for word in tokenized:
+    #     #     word = word.strip('–/') # contains 1999-, and/or
+    #     #     word = re.split('–/', word)
+    #     #     if len(word) > 1:
+    #     #         print(word)
+    #     #         if re.match(r'\D*\d+', word):
+    #     #             continue # filter out all numbers
+    #     #     modified.append(word[-1])
+    #     nouns = [word for (word, pos) in nltk.pos_tag(tokenized) if is_noun(pos)]
+    #     nouns = [lemmatizer.lemmatize(word, 'n') for word in nouns]
+
+        # words.extend(nouns)
+
+    # counter = Counter(words)
+
+    # test cover rate
+    with open('data/FB15K/active_learning/0.9/init_triples.txt', 'r') as f:
+        init_triples = [list(map(lambda x: int(x), line.strip().split())) for line in f.readlines()]
+        
+    with open('data/FB15K/active_learning/0.9/unexplored_triples.txt', 'r') as f:
+        unexplored_triples = [list(map(lambda x: int(x), line.strip().split())) for line in f.readlines()]
+
+    init_filter = generate_relation_filter(init_triples, idx2description, 1345)
+    all_filter = generate_relation_filter(init_triples + unexplored_triples, idx2description, 1345)
+    
+    # 统计一下init_filter可以cover多少
+    count = 0
+    for triple in unexplored_triples:
+        h, r, t = triple
+        try:
+            if r in init_filter[idx2description[h]] or r + 1345 in init_filter[idx2description[t]]:
+                count += 1
+        except:
+            continue
+            count += 1 
+    print(count / len(unexplored_triples))
+    counter = Counter(descriptions)
+    des2count = OrderedDict(counter.most_common())
+    descriptions = list(des2count.keys())
 
     model_name = 'sentence-transformers/all-MiniLM-L6-v2'
     tokenizer, model = load_model(model_name)
@@ -171,6 +274,13 @@ if __name__ == "__main__":
     des_embeddings = des_embeddings.detach().cpu().numpy()
     clustering = AgglomerativeClustering(n_clusters=50).fit(des_embeddings)
     labels = clustering.labels_
+    
+    clusters = defaultdict(list)
+    for i in range(len(descriptions)):
+        c = labels[i]
+        clusters[c].append(descriptions[i])
+    
+    labels = None
     tsne_visualize(des_embeddings, None, labels)
 
     print('over')
