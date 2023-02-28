@@ -3,6 +3,8 @@ import os
 import json
 from collections import defaultdict
 import logging
+from numpy import ndarray
+from torch import Tensor
 
 DOTS = '********'
 
@@ -87,6 +89,13 @@ def load_classes(path):
         idx2class: a dict that map each idx to its class like {1: 'human'}
         class_names: the values of idx2class
     """
+    path_idx2class = os.path.join(path, 'idx2class.json') 
+
+    if os.path.exists(path_idx2class):
+        with open(path_idx2class, 'r') as f:
+            idx2class = json.load(f)
+        return idx2class
+        
     key2qid, key2idx, idx2class = [{} for _ in range(3)]
 
     with open(os.path.join(path, 'entity2wikidata.json'), 'r') as f:
@@ -108,16 +117,20 @@ def load_classes(path):
         class_name = qid2class[wiki_id]['parent_entity_name']
         idx = key2idx[k]
         idx2class[idx] = class_name
+
+    with open(path_idx2class, 'w') as f:
+        json.dump(idx2class, f)
     
     return idx2class 
 
-def generate_relation_filter(triples: list, id2class: dict, n_rel: int, rec=False) -> dict:
+def generate_relation_filter(path:str, triples: Tensor, id2class: dict, n_rel: int, rec=False) -> dict:
     """generate the relation filter based on entity class (like 'human').
     That contains the legal pattern appeared in triples, like ['human', 'like'],
     and helps to filter out the ridiculous combination like ['human', 'isLocated']
 
     Args:
-        triples (list): [(h,r,t)] 
+        path: to load and save filter
+        triples (Tensor): [(h,r,t)] 
         id2class (dict): {1: 'human'} 
         n_rel (int): how many rel, since we may add rec
         rec (bool): add reciprocal relations or not
@@ -126,15 +139,25 @@ def generate_relation_filter(triples: list, id2class: dict, n_rel: int, rec=Fals
         dict: like {human: [like, isWife, plays...]} 
     """
     # generate the relation filter based on entity class (like human).
+    path_filter = os.path.join(path, 'relation_filter.json') 
+
+    if os.path.exists(path_filter):
+        with open(path_filter, 'r') as f:
+            filter = json.load(f)
+        return filter 
 
     class_filter_relation = defaultdict(set)
     for h, r, t in triples:
-        if h in id2class.keys() and t in id2class.keys():
-            # there may have some entity miss the corresponding descriptions
-            h_class, t_class = id2class[h], id2class[t]
+        h, r, t = h.item(), r.item(), t.item()
+        # there may have some entity miss the corresponding descriptions
+        h_class, t_class = id2class.get(h), id2class.get(t)
+        if h_class:
             class_filter_relation[h_class].add(r)
-            if rec:
-                class_filter_relation[t_class].add(r + n_rel)
+        if rec and t_class:
+            class_filter_relation[t_class].add(r + n_rel)
+    
+    with open(path_filter, 'w') as f:
+        json.dump(class_filter_relation, f)
     
     return class_filter_relation
     

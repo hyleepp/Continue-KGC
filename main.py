@@ -16,7 +16,7 @@ from models import ALL_MODELS
 from optimization.KGOptimizer import KGOptimizer
 from optimization import Regularizer
 from optimization.Regularizer import ALL_REGULARIZER
-from utils.train import get_savedir, count_param, avg_both, tensor2set, HeapNode, DOTS
+from utils.train import *
 from dataset.KGDataset import KGDataset
 
 ''' Parser
@@ -372,7 +372,7 @@ class ActiveLearning(object):
     def get_max_batch_for_inference(self):
         ''' get the max batch size when try to get candidates.
             since the following process involves a tensor with dynamic shape (remain_scores_idx),
-            it is hard to choose a good number once for all.
+            it is hard to choose the best number once for all.
             The result of this function is good enough
         '''
         # todo handle the multi-card problem
@@ -426,9 +426,21 @@ class ActiveLearning(object):
             # 1.3 save as a queue or sth like this (merged with 1.2)
             
             # 2. propose a possible relations
-            # 2.1 naive setting, get all relations for each node
-            focus_relations = torch.arange(self.model.n_rel * 2).unsqueeze_(0).repeat(len(focus_nodes), 1).to(self.model.device) # (nodes, rel)
-            # 2.2 filter, maybe not so meaningful, since the tensor may not be sparse enough
+            # filter, maybe not so meaningful, since the tensor may not be sparse enough
+            candidate_queries = []
+            for node in focus_nodes:
+                class_name = self.id2class.get(node.item())
+                # if class_name and class_name in self.relation_filter.keys():
+                if class_name:
+                    candidate_relations = list(self.relation_filter.get(class_name))
+                    candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
+                else:
+                    # use all relations
+                    candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)
+                entity_col = torch.ones_like(candidate_relations) * node.item()
+                candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1))
+
+            candidate_queries = torch.cat(candidate_queries, dim=0)
 
             # TODO also limits the possible tails 
 
@@ -438,55 +450,88 @@ class ActiveLearning(object):
             
             # batch run
             # here a batch is set to be 1000 # TODO more flexible
-            ent_begin = 0 # it could also be treated as the row id in focus_relations
-            rel_begin = 0 
+            batch_begin = 0 
+            batch_size = 1 # todo fix the the problem of single input
 
             # build triples
             # simply loop # TODO -> a little bit parallel
             # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
-            batch_size = 1 # todo fix the the problem of single input
             
             # try to achieve the maximum capacity in the following progress
-
             
-            with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
+            # todo change the logic in here
+            with tqdm (total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 cur_seen = set()
-                while ent_begin < len(focus_nodes):
-                    rel_idx = 0
-                    while rel_idx < len(focus_relations[0]):
-                        h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_idx]
-                        query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
-                        scores, _ = self.model(query, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
+                while batch_begin < len(candidate_queries):
+                    queries = candidate_queries[batch_begin: batch_begin + batch_size]
+                    scores, _ = self.model(queries, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
 
-                        # store to heap and screen out unqualified ones in parallel style
-                        remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
+                    # store to heap and screen out unqualified ones in parallel style
+                    remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
 
-                        # update heap
-                        # TODO see if we let this run on cpu and we continue gpu processes 
-                        for i in range(len(remain_scores_idx)):
-                            lhs_idx, t = remain_scores_idx[i]
-                            score = scores[lhs_idx, t]
-                            if score > heap[0].value:
-                                triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
-                                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
-                                triple_tuple = tuple(triple.tolist())
-                                if triple_tuple not in self.previous_true_set and \
-                                triple_tuple not in self.previous_false_set and \
-                                triple_tuple not in cur_seen: # todo find some better way to do so
-                                    heapq.heapreplace(heap, HeapNode((score.item(), triple)))
-                                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
-                                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
+                    # update heap
+                    # TODO see if we let this run on cpu and we continue gpu processes 
+                    for i in range(len(remain_scores_idx)):
+                        query_idx, t = remain_scores_idx[i]
+                        score = scores[query_idx, t]
+                        if score > heap[0].value:
+                            triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) 
+                            # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                            triple_tuple = tuple(triple.tolist())
+                            if triple_tuple not in self.previous_true_set and \
+                            triple_tuple not in self.previous_false_set and \
+                            triple_tuple not in cur_seen: # todo find some better way to do so
+                                heapq.heapreplace(heap, HeapNode((score.item(), triple)))
+                                reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
+                                cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
+                    
+                    bar.update(batch_size)
+                    bar.set_postfix(min_score=f'{heap[0].value:.3f}')
+
+                    del queries, scores, remain_scores_idx
+                    torch.cuda.empty_cache()
+                    batch_begin += batch_size
+                    batch_size = min(2 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+
+            # with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
+            #     bar.set_description("get candidate progress")
+            #     cur_seen = set()
+            #     while ent_begin < len(focus_nodes):
+            #         rel_idx = 0
+            #         while rel_idx < len(focus_relations[0]):
+            #             h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_idx]
+            #             query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
+            #             scores, _ = self.model(query, eval_mode=true, require_reg=false) # (bs x n_ent) (h x t)
+
+            #             # store to heap and screen out unqualified ones in parallel style
+            #             remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
+
+            #             # update heap
+            #             # todo see if we let this run on cpu and we continue gpu processes 
+            #             for i in range(len(remain_scores_idx)):
+            #                 lhs_idx, t = remain_scores_idx[i]
+            #                 score = scores[lhs_idx, t]
+            #                 if score > heap[0].value:
+            #                     triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
+            #                     # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+            #                     triple_tuple = tuple(triple.tolist())
+            #                     if triple_tuple not in self.previous_true_set and \
+            #                     triple_tuple not in self.previous_false_set and \
+            #                     triple_tuple not in cur_seen: # todo find some better way to do so
+            #                         heapq.heapreplace(heap, heapnode((score.item(), triple)))
+            #                         reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
+            #                         cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
                         
-                        rel_idx += 1
-                        bar.update(len(h))
-                        bar.set_postfix(min_score=f'{heap[0].value:.3f}')
+            #             rel_idx += 1
+            #             bar.update(len(h))
+            #             bar.set_postfix(min_score=f'{heap[0].value:.3f}')
 
-                        del query, scores, remain_scores_idx
-                        torch.cuda.empty_cache()
-                    ent_begin += batch_size
-                    batch_size = min(10 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+            #             del query, scores, remain_scores_idx
+            #             torch.cuda.empty_cache()
+            #         ent_begin += batch_size
+            #         batch_size = min(10 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
 
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
@@ -619,6 +664,12 @@ class ActiveLearning(object):
         completion_ratio = len(self.init_triples) / (len(self.init_triples) + len(self.unexplored_triples))  # unexplored does not have reciprocal relations
         logging.info(f"Continue completion: {completion_ratio:.4f} -> {self.args.expected_completion_ratio} Starts.")
         step = 0
+
+        # TODO more general
+        logging.info('\t generate relation filter')
+        self.id2class = load_classes(self.dataset.data_path) if self.args.dataset == "FB15K" else None
+        self.relation_filter = generate_relation_filter(self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
+        logging.info('\t relation filter generated successfully')
 
         while completion_ratio < self.args.expected_completion_ratio:
             
