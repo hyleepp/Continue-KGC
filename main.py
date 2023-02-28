@@ -668,7 +668,7 @@ class ActiveLearning(object):
         # TODO more general
         logging.info('\t generate relation filter')
         self.id2class = load_classes(self.dataset.data_path) if self.args.dataset == "FB15K" else None
-        self.relation_filter = generate_relation_filter(self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
+        self.relation_filter = generate_relation_filter(os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio)), self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
         while completion_ratio < self.args.expected_completion_ratio:

@@ -5,6 +5,7 @@ from collections import defaultdict
 import logging
 from numpy import ndarray
 from torch import Tensor
+import pickle as pkl
 
 DOTS = '********'
 
@@ -89,12 +90,13 @@ def load_classes(path):
         idx2class: a dict that map each idx to its class like {1: 'human'}
         class_names: the values of idx2class
     """
-    path_idx2class = os.path.join(path, 'idx2class.json') 
+    path_idx2class = os.path.join(path, 'idx2class.pkl') 
 
     if os.path.exists(path_idx2class):
-        with open(path_idx2class, 'r') as f:
-            idx2class = json.load(f)
+        with open(path_idx2class, 'rb') as f:
+            idx2class = pkl.load(f)
         return idx2class
+
         
     key2qid, key2idx, idx2class = [{} for _ in range(3)]
 
@@ -118,8 +120,15 @@ def load_classes(path):
         idx = key2idx[k]
         idx2class[idx] = class_name
 
+    with open(path_idx2class, 'wb') as f:
+        pkl.dump(idx2class, f)
+    # also save json for human reading
+    path_idx2class = os.path.join(path, 'idx2class.json')
     with open(path_idx2class, 'w') as f:
         json.dump(idx2class, f)
+
+
+    
     
     return idx2class 
 
@@ -139,11 +148,11 @@ def generate_relation_filter(path:str, triples: Tensor, id2class: dict, n_rel: i
         dict: like {human: [like, isWife, plays...]} 
     """
     # generate the relation filter based on entity class (like human).
-    path_filter = os.path.join(path, 'relation_filter.json') 
+    path_filter = os.path.join(path, 'relation_filter.pkl') 
 
     if os.path.exists(path_filter):
-        with open(path_filter, 'r') as f:
-            filter = json.load(f)
+        with open(path_filter, 'rb') as f:
+            filter = pkl.load(f)
         return filter 
 
     class_filter_relation = defaultdict(set)
@@ -156,8 +165,13 @@ def generate_relation_filter(path:str, triples: Tensor, id2class: dict, n_rel: i
         if rec and t_class:
             class_filter_relation[t_class].add(r + n_rel)
     
+    with open(path_filter, 'wb') as f:
+        pkl.dump(class_filter_relation, f)
+    # also save json file
+    path_filter = os.path.join(path, 'relation_filter.json') 
     with open(path_filter, 'w') as f:
         json.dump(class_filter_relation, f)
+
     
     return class_filter_relation
     
