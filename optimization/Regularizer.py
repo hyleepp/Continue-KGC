@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-ALL_REGULARIZER = ["F2", "DURA_RESCAL"] # log for all regs
+ALL_REGULARIZER = ["F2", "DURA_RESCAL", "DURA_W"] # log for all regs
 
 class Regularizer(nn.Module, ABC):
     '''Base class of all regularizer'''
@@ -51,3 +51,15 @@ class DURA_RESCAL(Regularizer):
         norm += torch.sum(torch.bmm(r.transpose(1, 2), h.unsqueeze(-1)) ** 2 + torch.bmm(r, t.unsqueeze(-1)) ** 2)
 
         return self.weight * norm / h.shape[0] 
+
+class DURA_W(Regularizer):
+    '''dura for complex'''
+    def __init__(self, weight: float):
+        super().__init__(weight)
+    
+    def forward(self, factors: Tuple[torch.Tensor]):
+        norm = 0
+        h, r, t = factors
+        norm += 0.5 *torch.sum(t**2 + h**2)
+        norm += 1.5 * torch.sum(h**2 * r**2 +  t**2 *  r**2)
+        return self.weight * norm / h.shape[0]

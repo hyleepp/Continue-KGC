@@ -10,7 +10,8 @@ from .KGModel import KGModel
 from .utils.calculation import euc_distance, givens_rotation
 
 DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE']
-BILINEAR_MODELS = ['RESCAL']
+BILINEAR_MODELS = ['RESCAL', 'ComplEx']
+EPSILON = 1e-15
 
 class DBModel(KGModel):
 
@@ -75,7 +76,43 @@ class ComplEx(DBModel):
         super().__init__(args)
 
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
-        pass
+        h = enc_e[triples[:, 0]]
+        h_r, h_i = h[:, self.hidden_size // 2:], h[:, :self.hidden_size // 2]
+        r = enc_r[triples[:, 1]]
+        r_r, r_i = r[:, self.hidden_size // 2:], r[:, :self.hidden_size // 2]
+        lhs_e = torch.cat([
+            h_r * r_r - h_i * r_i,
+            h_r * r_i + h_i * r_r
+        ], 1)
+
+        return lhs_e
+    
+    def score(self, lhs_e, rhs_e, eval_mode=False, require_grad=True):
+        """Compute similarity scores or queries against targets in embedding space."""
+        lhs_e = lhs_e[:, :self.hidden_size // 2], lhs_e[:, self.hidden_size // 2:]
+        rhs_e = rhs_e[:, :self.hidden_size // 2], rhs_e[:, self.hidden_size // 2:]
+        if eval_mode:
+            return lhs_e[0] @ rhs_e[0].transpose(0, 1) + lhs_e[1] @ rhs_e[1].transpose(0, 1)
+        else:
+            return torch.sum(
+                lhs_e[0] * rhs_e[0] + lhs_e[1] * rhs_e[1],
+                1, keepdim=True
+            )
+    
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+
+        h = enc_e[triples[:, 0]]
+        h_r, h_i = h[:, self.hidden_size // 2:], h[:, :self.hidden_size // 2]
+        r = enc_r[triples[:, 1]]
+        r_r, r_i = r[:, self.hidden_size // 2:], r[:, :self.hidden_size // 2]
+        t = enc_e[triples[:, 0]]
+        t_r, t_i = t[:, self.hidden_size // 2:], t[:, :self.hidden_size // 2]
+
+        head_f = torch.sqrt(h_r[0] ** 2 + h_i[1] ** 2 + EPSILON)
+        rel_f = torch.sqrt(r_r[0] ** 2 + r_i[1] ** 2 + EPSILON)
+        tail_f = torch.sqrt(t_r[0] ** 2 + t_i[1] ** 2 + EPSILON)
+
+        return head_f, rel_f, tail_f
 
 class RESCAL(DBModel):
 
@@ -94,6 +131,7 @@ class RESCAL(DBModel):
 
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         return enc_e[triples[:, 0]], enc_r[triples[:, 1]].view(-1, self.hidden_size, self.hidden_size), enc_e[triples[:, 2]] # enc_r = trans + rot
+    
     
     
 class RotE(DBModel):

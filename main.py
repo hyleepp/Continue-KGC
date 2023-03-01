@@ -325,8 +325,6 @@ class ActiveLearning(object):
         # prepare triples
         if phase == 'train and valid':
             # seprate the init set into training and eval set
-            # train_count = int(len(self.init_triples) * self.args.train_ratio)
-            # train_triples, valid_triples = self.init_triples[:train_count], self.init_triples[train_count:]
             train_triples, valid_triples = self.train_triples, self.valid_triples
         else:
             train_triples = self.init_triples

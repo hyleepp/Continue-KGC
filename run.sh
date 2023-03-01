@@ -1,18 +1,8 @@
-export CUDA_VISIBLE_DEVICES=0
-if [ ! -n "$1" ]; then
-    # default
-    dataset=WN18
-elif [ $1  == "fb" ]; then
-    dataset="FB15K"
-elif [ $1 == "wn" ]; then
-    dataset="WN18"
-elif [ $1 == "wiki" ]; then
-    dataset="wikikg-v2"
-fi
+export CUDA_VISIBLE_DEVICES=5
 python main.py \
-    --dataset $dataset \
-    --model RotE \
-    --regularizer F2 \
+    --dataset FB15K \
+    --model ComplEx \
+    --regularizer DURA_W \
     --setting active_learning \
     --batch_size 1000 \
     --init_ratio 0.9 \
@@ -20,7 +10,7 @@ python main.py \
     --hidden_size 500 \
     --neg_size -1 \
     --max_epochs 100 \
-    --reg_weight 0.001\
+    --reg_weight 0.005\
     --incremental_learning_method retrain \
     --active_num 10000 \
     --incremental_learning_epoch 5 \
