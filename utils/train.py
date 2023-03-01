@@ -167,11 +167,6 @@ def generate_relation_filter(path:str, triples: Tensor, id2class: dict, n_rel: i
     
     with open(path_filter, 'wb') as f:
         pkl.dump(class_filter_relation, f)
-    # also save json file
-    path_filter = os.path.join(path, 'relation_filter.json') 
-    with open(path_filter, 'w') as f:
-        json.dump(class_filter_relation, f)
-
     
     return class_filter_relation
     

@@ -495,44 +495,6 @@ class ActiveLearning(object):
                     batch_begin += batch_size
                     batch_size = min(2 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
 
-            # with tqdm (total=len(focus_nodes) * len(focus_relations[0]), unit='ex') as bar:
-            #     bar.set_description("get candidate progress")
-            #     cur_seen = set()
-            #     while ent_begin < len(focus_nodes):
-            #         rel_idx = 0
-            #         while rel_idx < len(focus_relations[0]):
-            #             h, r = focus_nodes[ent_begin: ent_begin + batch_size], focus_relations[ent_begin: ent_begin + batch_size, rel_idx]
-            #             query = torch.stack((h, r), dim=1) #  add one dim, this will be removed in batched version
-            #             scores, _ = self.model(query, eval_mode=true, require_reg=false) # (bs x n_ent) (h x t)
-
-            #             # store to heap and screen out unqualified ones in parallel style
-            #             remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
-
-            #             # update heap
-            #             # todo see if we let this run on cpu and we continue gpu processes 
-            #             for i in range(len(remain_scores_idx)):
-            #                 lhs_idx, t = remain_scores_idx[i]
-            #                 score = scores[lhs_idx, t]
-            #                 if score > heap[0].value:
-            #                     triple = torch.stack((h[lhs_idx], r[lhs_idx], t)) 
-            #                     # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
-            #                     triple_tuple = tuple(triple.tolist())
-            #                     if triple_tuple not in self.previous_true_set and \
-            #                     triple_tuple not in self.previous_false_set and \
-            #                     triple_tuple not in cur_seen: # todo find some better way to do so
-            #                         heapq.heapreplace(heap, heapnode((score.item(), triple)))
-            #                         reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
-            #                         cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
-                        
-            #             rel_idx += 1
-            #             bar.update(len(h))
-            #             bar.set_postfix(min_score=f'{heap[0].value:.3f}')
-
-            #             del query, scores, remain_scores_idx
-            #             torch.cuda.empty_cache()
-            #         ent_begin += batch_size
-            #         batch_size = min(10 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
-
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
         return heap
