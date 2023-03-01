@@ -3,11 +3,13 @@ import random
 from random import shuffle
 import json
 
-import pickle
+import pickle as pkl
 import numpy as np
 import torch
+from torch import Tensor
 
 from utils import dataset_utils
+from collections import defaultdict
 
  
 
@@ -221,7 +223,15 @@ def merge_wiki(file_path):
 
     return
 
-def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123): 
+def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filter=False, random_seed=123,): 
+    """generate the dataset and other things needed for active learning setting
+
+    Args:
+        data_path (str): path of data
+        init_ratio (float, optional): how much portion data we know in the beginning. Defaults to 0.7.
+        need_query_filter (bool, optional): whether or not generate the relation filter, this need wiki infomation, so only used to FB or wiki. Defaults to False.
+        random_seed (int, optional): . Defaults to 123.
+    """
 
     # generate a folder
     dataset_utils.mkdir(data_path + "/active_learning" + f"/{init_ratio}") 
@@ -262,13 +272,17 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
         int_init_triples = dataset_utils.triples_str_to_int(init_triples)
         ndarray_init_triples = np.asarray(int_init_triples).astype('int64')
         ndarray_init_triples = torch.from_numpy(ndarray_init_triples)
-        pickle.dump(ndarray_init_triples, f)
+        pkl.dump(ndarray_init_triples, f)
 
     with open(os.path.join(data_path, "active_learning", str(init_ratio), "unexplored_triples.pkl"), 'wb') as f:
         int_unexplored_triples = dataset_utils.triples_str_to_int(unexplored_triples)
         ndarray_unexplored_tripls = np.asarray(int_unexplored_triples).astype('int64')
         ndarray_unexplored_tripls = torch.from_numpy(ndarray_unexplored_tripls)
-        pickle.dump(ndarray_unexplored_tripls, f)
+        pkl.dump(ndarray_unexplored_tripls, f)
+
+    if need_query_filter:
+        id2class = generate_id2class(data_path)
+        query_filter = generate_query_filter(os.path.join(data_path, 'active_learning', str(init_ratio)), init_triples, id2class, n_rel)
 
     # transform to writable ones
     init_triples = dataset_utils.triples_to_lines(init_triples)
@@ -292,16 +306,101 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, random_seed=123)
     with open(os.path.join(data_path, "active_learning", str(init_ratio), "dataset_config.json"), 'w+') as f:
         dataset_config = json.dumps(dataset_config)
         f.write(dataset_config)
+
+
     
     print("create activating setting datasets done successfully.") 
 
     return
 
+def generate_id2class(path):
+    """generate the idx2class dict (1: 'human', 2: "film")
+    the class information is get from the "is instance of" relation from wikidata. And we will
+    use this class information to filter some ridiculous pairs of entity and relation (like [human, isLocated])
+
+    ps:
+    key means sth like /m/012qdp
+    qid means id in wiki, like Q5
+    idx means id in triples, int number, i-th entity
+
+    Args:
+        path (_type_): the path of data 
+
+    Returns:
+        idx2class: a dict that map each idx to its class like {1: 'human'}
+    """
+        
+    key2qid, key2idx, idx2class = [{} for _ in range(3)]
+
+    with open(os.path.join(path, 'entity2wikidata.json'), 'r') as f:
+        entity2wiki = json.load(f)
+        for key, value in entity2wiki.items():
+            key2qid[key] = value['wikidata_id']
+
+    with open(os.path.join(path, 'entity2id.txt'), 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            key, idx = line.strip().split()
+            key2idx[key] = int(idx)
+
+    with open(os.path.join(path, "entity_type.json"), 'r') as f:
+        qid2class = json.load(f)
+
+    for k, v in entity2wiki.items():
+        wiki_id = v['wikidata_id']
+        class_name = qid2class[wiki_id]['parent_entity_name']
+        idx = key2idx[k]
+        idx2class[idx] = class_name
+
+    path_idx2class = os.path.join(path, 'idx2class.pkl') 
+
+    with open(path_idx2class, 'wb') as f:
+        pkl.dump(idx2class, f)
+    # also save json for human reading
+    path_idx2class = os.path.join(path, 'idx2class.json')
+    with open(path_idx2class, 'w') as f:
+        json.dump(idx2class, f)
+
+    return idx2class 
+
+
+def generate_query_filter(path:str, triples:list, id2class: dict, n_rel: int, rec=False) -> dict:
+    """generate the query filter based on entity class (like 'human').
+    That contains the legal pattern appeared in triples, like ['human', 'like'],
+    and helps to filter out the ridiculous combination like ['human', 'isLocated']
+
+    Args:
+        path: to load and save filter
+        triples (list): [(h,r,t)] 
+        id2class (dict): {1: 'human'} 
+        n_rel (int): how many rel, since we may add rec
+        rec (bool): add reciprocal relations or not
+
+    Returns:
+        dict: like {human: [like, isWife, plays...]} 
+    """
+
+    class_filter_relation = defaultdict(set)
+    for h, r, t in triples:
+        h, r, t = int(h), int(r), int(t)
+        # there may have some entity miss the corresponding descriptions
+        h_class, t_class = id2class.get(h), id2class.get(t)
+        if h_class:
+            class_filter_relation[h_class].add(r)
+        if rec and t_class:
+            class_filter_relation[t_class].add(r + n_rel)
+    
+    path_filter = os.path.join(path, 'relation_filter.pkl') 
+    with open(path_filter, 'wb') as f:
+        pkl.dump(class_filter_relation, f)
+    
+    return class_filter_relation
+    
 
 
 if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/WN18', 0.7)
+    generate_active_learning_dataset('data/FB15K', 0.8, True)
     # merge_wiki('data_raw/wikikg-v2')

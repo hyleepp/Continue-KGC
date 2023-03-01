@@ -428,9 +428,8 @@ class ActiveLearning(object):
             candidate_queries = []
             for node in focus_nodes:
                 class_name = self.id2class.get(node.item())
-                # if class_name and class_name in self.relation_filter.keys():
                 if class_name:
-                    candidate_relations = list(self.relation_filter.get(class_name))
+                    candidate_relations = list(self.query_filter.get(class_name))
                     candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
                 else:
                     # use all relations
@@ -627,8 +626,8 @@ class ActiveLearning(object):
 
         # TODO more general
         logging.info('\t generate relation filter')
-        self.id2class = load_classes(self.dataset.data_path) if self.args.dataset == "FB15K" else None
-        self.relation_filter = generate_relation_filter(os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio)), self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
+        self.id2class = load_id2class(self.dataset.data_path) if self.args.dataset == "FB15K" else None
+        self.query_filter = load_query_filter(os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio)), self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
         while completion_ratio < self.args.expected_completion_ratio:
