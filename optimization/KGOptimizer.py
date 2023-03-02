@@ -132,6 +132,10 @@ class KGOptimizer(nn.Module):
             triples = torch.cat((previous_true, cur_true), 0) if cur_true is not None else previous_true # may do not have new true triples
         elif method == 'finetune':
             triples = cur_true
+        else:
+            raise ValueError
+
+        triples = triples[torch.randperm(triples.shape[0]), :]
         
         if len(triples) == 0:
             return float('nan') # if there is not new triples, then do not need to calculate loss

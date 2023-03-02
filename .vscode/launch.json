@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "env": {"CUDA_VISIBLE_DEVICES": "4"},
+            "env": {"CUDA_VISIBLE_DEVICES": "0"},
             "args": [
                 "--dataset", "FB15K",
                 "--model", "RotE",
@@ -32,6 +32,7 @@
                 // "--pretrained_model_id", "logs/02_16/FB15K/RESCAL_16_59_19",
                 // "--pretrained_model_id", "logs/02_27/FB15K/RotE_21_42_07",
                 "--pretrained_model_id", "logs/03_02/FB15K/RotE_14_46_54",
+                // "--pretrained_model_id", "logs/03_02/FB15K/ComplEx_21_05_19",
                 "--active_num", "10000",
                 "--incremental_learning_epoch", "10",
             ]

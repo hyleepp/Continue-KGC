@@ -270,7 +270,7 @@ class ActiveLearning(object):
         """
 
         if reset_model:
-            self.model = getattr(models, self.args.model)(self.args) 
+            self.model = getattr(models, self.args.model)(self.args).to(self.device)
         regularizer = getattr(Regularizer, self.args.regularizer)(self.args.reg_weight)
         optim_method = getattr(torch.optim, self.args.optimizer)(self.model.parameters(), lr=self.args.pretrain_learning_rate)
         optimizer = KGOptimizer(self.model, optim_method, regularizer, self.args.batch_size, self.args.neg_size, self.args.sta_scale, debug=self.args.debug)
@@ -642,7 +642,7 @@ class ActiveLearning(object):
             true_count, false_count, completion_ratio = self.verification(candidates)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
-            if step % self.args.update_freq == 0:
+            if self.args.update_freq > 0 and step % self.args.update_freq == 0: # < 0 means never update
                 self.incremental_learning(step)
             
         logging.info(f"\t Completion finished at step {step}.")
