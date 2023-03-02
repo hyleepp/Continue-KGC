@@ -17,8 +17,8 @@
                 "--model", "RotE",
                 "--setting", "active_learning",
                 "--init_ratio", "0.9",
-                "--max_epochs", "100",
-                "--update_freq", "2",
+                "--max_epochs", "1",
+                "--update_freq", "1",
                 "--patient", "2",
                 "--regularizer", "F2",
                 "--reg_weight", "0.001",
@@ -31,6 +31,7 @@
                 // "--pretrained_model_id", "logs/01_28/WN18/RotatE_17_28_33", 
                 // "--pretrained_model_id", "logs/02_16/FB15K/RESCAL_16_59_19",
                 // "--pretrained_model_id", "logs/02_27/FB15K/RotE_21_42_07",
+                "--pretrained_model_id", "logs/03_02/FB15K/RotE_14_46_54",
                 "--active_num", "10000",
                 "--incremental_learning_epoch", "10",
             ]

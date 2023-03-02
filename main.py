@@ -553,6 +553,7 @@ class ActiveLearning(object):
         s = "Current Completion Ratio is " + str(round(completion_ratio, 3)) + "."
         print(f"{DOTS} {s:<50} {DOTS}")
         self.writer.add_scalar("completion_ratio", completion_ratio, step)
+        self.writer.add_scalar('precision', true_count / (true_count + false_count), step)
 
         return
     
@@ -614,8 +615,6 @@ class ActiveLearning(object):
         3. update the model
         """
 
-        # TODO add other cases
-
         self.pretrain()
 
         # continue active completion
@@ -626,13 +625,11 @@ class ActiveLearning(object):
         # TODO more general
         logging.info('\t generate relation filter')
         self.id2class = load_id2class(self.dataset.data_path) if self.args.dataset == "FB15K" else None
-        self.query_filter = load_query_filter(os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio)), self.init_triples, self.id2class, self.model.n_rel) if self.args.dataset == "FB15K" else None
+        self.query_filter = load_query_filter(os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio))) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
         while completion_ratio < self.args.expected_completion_ratio:
-            
             step += 1
-
             candidates = self.get_candidate_for_verification()
             true_count, false_count, completion_ratio = self.verification(candidates)
             self.report_current_state(step, true_count, false_count, completion_ratio)
