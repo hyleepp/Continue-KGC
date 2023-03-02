@@ -163,9 +163,6 @@ class KGModel(nn.Module, ABC):
         Returns:
             Tuple: mean ranks, mean reciprocal ranks, and hits@k (1, 3 10)
         """
-
-        # TODO add filters
-
         mean_rank = {}
         mean_reciprocal_rank = {}
         hits_at = {}
@@ -179,7 +176,7 @@ class KGModel(nn.Module, ABC):
                 q[:, 1] = q[:, 1] + self.n_rel
                 
             # get ranking
-            ranks = self.get_ranking(q, filter=None, batch_size=batch_size)
+            ranks = self.get_ranking(q, filter=filters[m], batch_size=batch_size)
             mean_rank[m] = torch.mean(ranks).item()
             mean_reciprocal_rank[m] = torch.mean(1. / ranks).item()
             hits_at[m] = torch.FloatTensor((list(map(
@@ -223,13 +220,11 @@ class KGModel(nn.Module, ABC):
                 target_scores = self.score(queries, target_candidates, eval_mode=False)
                 all_scores = self.score(queries, all_candidates, eval_mode=True) 
 
-                # TODO filter part
-                # here we just simply filter out the target itself
-                # give the true and filer a huge negative number to ignore it
-                # TODO test this function
+                # give the true and filter a huge negative number to ignore it
                 for i, triple in enumerate(batch_triples):
-                    _, _, target = triple
-                    all_scores[i, target] = -1e6 # 
+                    filter_out = filter.get((triple[0].item(), triple[1].item()))
+                    filter_out = filter_out + [(triple[2].item())] if filter_out else [triple[2].item()] # true target
+                    all_scores[i, torch.LongTensor(filter_out)] = -1e6  
 
                 ranks[b_begin:b_begin + batch_size] += torch.sum(
                     (all_scores >= target_scores).float(), dim=1

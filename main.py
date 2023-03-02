@@ -231,6 +231,7 @@ class ActiveLearning(object):
         train_triples = self.dataset.add_reciprocal(train_triples) # only train needs rec
         self.train_triples = train_triples.to(args.device)
         self.valid_triples = valid_triples.to(args.device)
+        self.entity_filters = get_seen_filters(self.train_triples, self.args.n_rel) # the filter setting in evaluation of mrr and hits
         del triples_raw, train_triples, valid_triples
 
 
@@ -249,7 +250,7 @@ class ActiveLearning(object):
     
     def get_validation_metric(self, valid_triples) -> float:
 
-        valid_metrics = self.model.calculate_metrics(valid_triples, self.filters)
+        valid_metrics = self.model.calculate_metrics(valid_triples, self.entity_filters)
         valid_metrics = avg_both(*valid_metrics)
 
         logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
@@ -613,8 +614,6 @@ class ActiveLearning(object):
         3. update the model
         """
 
-        # TODO build filters
-        self.filters = None
         # TODO add other cases
 
         self.pretrain()

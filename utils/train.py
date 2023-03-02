@@ -134,3 +134,29 @@ def show_the_cover_rate(unexplored_triples:list, init_filter:dict, idx2class:dic
     logging.info(f'init filter + ignore unrecorded cover rate: {(count_in_init + count_class_not_recorded) / len(unexplored_triples)}')
 
     return
+
+def get_seen_filters(examples, n_relations):
+    """Create seen filtering lists for evaluation.
+
+    Args:
+      examples: Numpy array of size n_examples x 3 containing KG triples
+      n_relations: Int indicating the total number of relations in the KG
+
+    Returns:
+      lhs_final: Dictionary mapping queries (entity, relation) to filtered entities for left-hand-side prediction
+      rhs_final: Dictionary mapping queries (entity, relation) to filtered entities for right-hand-side prediction
+    """
+    lhs_filters = defaultdict(set)
+    rhs_filters = defaultdict(set)
+    for example in examples:
+        lhs, rel, rhs = list(map(lambda x: x.item(),example))
+        rhs_filters[(lhs, rel)].add(rhs)
+        lhs_filters[(rhs, rel + n_relations)].add(lhs)
+    lhs_final = {}
+    rhs_final = {}
+    for k, v in lhs_filters.items():
+        lhs_final[k] = sorted(list(v))
+    for k, v in rhs_filters.items():
+        rhs_final[k] = sorted(list(v))
+    filters = {'lhs': lhs_final, "rhs": rhs_final}
+    return filters
