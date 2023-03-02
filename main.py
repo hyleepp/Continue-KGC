@@ -259,12 +259,21 @@ class ActiveLearning(object):
         
         return valid_mrr
     
-    def init_optimizer(self):
-        '''init a optimizer'''
-        args = self.args
-        regularizer = getattr(Regularizer, args.regularizer)(args.reg_weight)
-        optim_method = getattr(torch.optim, args.optimizer)(self.model.parameters(), lr=args.pretrain_learning_rate)
-        optimizer = KGOptimizer(self.model, optim_method, regularizer, args.batch_size, args.neg_size, args.sta_scale, debug=args.debug)
+    def init_optimizer(self, reset_model=True):
+        """init an optimizer
+
+        Args:
+            reset_model (bool, optional): renew a model and learning from scratch. Defaults to False.
+
+        Returns:
+            optimizer: _description_
+        """
+
+        if reset_model:
+            self.model = getattr(models, self.args.model)(self.args) 
+        regularizer = getattr(Regularizer, self.args.regularizer)(self.args.reg_weight)
+        optim_method = getattr(torch.optim, self.args.optimizer)(self.model.parameters(), lr=self.args.pretrain_learning_rate)
+        optimizer = KGOptimizer(self.model, optim_method, regularizer, self.args.batch_size, self.args.neg_size, self.args.sta_scale, debug=self.args.debug)
         self.model.train()
 
         return optimizer
@@ -272,7 +281,6 @@ class ActiveLearning(object):
     def pretrain(self) -> None:
         """get a pretrained model. if specify a trained one, load it, otherwise train one.
         """
-
     
         if not self.args.pretrained_model_id:
 
@@ -288,7 +296,6 @@ class ActiveLearning(object):
 
             # phase 2
             logging.info("\t Start the pretrain phase 2: use all known data")
-            self.model.zero_grad()
             self.pretrain_phase('united')
             logging.info("\t Pretrain phase 2 optimization finished.")
 
@@ -321,7 +328,7 @@ class ActiveLearning(object):
         if phase == 'unite' and self.best_epoch == 0:
             raise ValueError("the value of best epoch has some question")
 
-        optimizer = self.init_optimizer()
+        optimizer = self.init_optimizer(reset_model=True) # the model in two phrase are different 
 
         # prepare triples
         if phase == 'train and valid':
@@ -576,7 +583,8 @@ class ActiveLearning(object):
         self.new_false_list = []
 
         # incremental training
-        optimizer = self.init_optimizer()
+        reset_model = self.args.incremental_learning_method == 'retrain'
+        optimizer = self.init_optimizer(reset_model)
 
         # training 
         avg_incre_loss = 0
