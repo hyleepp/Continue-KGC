@@ -11,7 +11,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "env": {"CUDA_VISIBLE_DEVICES": "5"},
+            "env": {"CUDA_VISIBLE_DEVICES": "4"},
             "args": [
                 "--dataset", "FB15K",
                 "--model", "UniBi_2",

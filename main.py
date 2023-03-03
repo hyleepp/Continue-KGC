@@ -212,6 +212,7 @@ class ActiveLearning(object):
 
     def __init__(self, args) -> None:
         
+        print("Initializing")
         self.args = args # todo write in a better way
         self.dataset, self.model, self.writer = initialization(args)
         self.device = self.model.device
@@ -246,6 +247,9 @@ class ActiveLearning(object):
 
         self.new_true_list = []
         self.new_false_list = []
+
+        print("Initialization finished")
+        return
 
     
     def get_validation_metric(self, valid_triples) -> float:
@@ -384,19 +388,20 @@ class ActiveLearning(object):
         # todo handle the multi-card problem
 
         torch.cuda.empty_cache()
-        before_memory = torch.cuda.memory_allocated(0)
-        # run a simple batch
-        query = torch.ones((1, 2)).type(torch.LongTensor)
-        query = query.to(self.device)
-        scores, _ = self.model(query, eval_mode=True, require_reg=False)
-        remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores 
-        after_memory = torch.cuda.memory_allocated(0)
-        total_memory = torch.cuda.get_device_properties(0).total_memory
-        # total_memory = torch.cuda.memory_reserved(0)
-        del query, scores, remain_scores_idx
-        torch.cuda.empty_cache()
-        right = (total_memory - before_memory) // int(after_memory - before_memory) * 2 # as the upper bound
+        # before_memory = torch.cuda.memory_allocated(0)
+        # # run a simple batch
+        # query = torch.ones((1, 2)).type(torch.LongTensor)
+        # query = query.to(self.device)
+        # scores, _ = self.model(query, eval_mode=True, require_reg=False)
+        # remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores 
+        # after_memory = torch.cuda.memory_allocated(0)
+        # total_memory = torch.cuda.get_device_properties(0).total_memory
+        # # total_memory = torch.cuda.memory_reserved(0)
+        # del query, scores, remain_scores_idx
+        # torch.cuda.empty_cache()
+        # right = (total_memory - before_memory) // int(after_memory - before_memory) * 2 # as the upper bound
         left = 0
+        right = 100000 # a number large enough
 
         # dichotomy
         while left < right + 1 and (right - left) / right > 0.01: # does not need to be very precise
@@ -407,8 +412,12 @@ class ActiveLearning(object):
                 scores, _ = self.model(query, eval_mode=True, require_reg=False)
                 remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores 
                 left = mid
+                del query, scores, remain_scores_idx
             except:
                 right = mid
+            torch.cuda.empty_cache()
+        
+        assert left > 0, "the memory is not enough, please choose a lower hidden size or do sth else"
 
         return left + 1
     
