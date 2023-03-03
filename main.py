@@ -490,7 +490,7 @@ class ActiveLearning(object):
                             triple_tuple not in cur_seen: # todo find some better way to do so
                                 heapq.heapreplace(heap, HeapNode((score.item(), triple)))
                                 reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
-                                cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered
+                                cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
                     
                     bar.update(batch_size)
                     bar.set_postfix(min_score=f'{heap[0].value:.3f}')

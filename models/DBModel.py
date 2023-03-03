@@ -5,12 +5,13 @@ from numpy import ndarray
 import torch 
 import torch.nn as nn
 from torch import Tensor 
+import torch.nn.functional as F
 
 from .KGModel import KGModel
-from .utils.calculation import euc_distance, givens_rotation
+from utils.calculation import euc_distance, givens_rotation
 
 DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE']
-BILINEAR_MODELS = ['RESCAL', 'ComplEx']
+BILINEAR_MODELS = ['RESCAL', 'ComplEx', "UniBi_2"]
 EPSILON = 1e-15
 
 class DBModel(KGModel):
@@ -131,7 +132,55 @@ class RESCAL(DBModel):
 
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         return enc_e[triples[:, 0]], enc_r[triples[:, 1]].view(-1, self.hidden_size, self.hidden_size), enc_e[triples[:, 2]] # enc_r = trans + rot
+
+class UniBi_2(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+        self.Rot_u = nn.Embedding(self.n_rel * 2, self.hidden_size, device=args.device) # introduce reciprocal relations
+        self.Rot_v = nn.Embedding(self.n_rel * 2, self.hidden_size, device=args.device)
+        self.similarity_method = 'dot'
+        
+        return
     
+    def encode(self, triples: Tensor) -> Tensor:
+        return self.emb_ent.weight, (self.Rot_u.weight, self.emb_rel.weight, self.Rot_v.weight)
+
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        Rot_u, Rel_s, Rot_v = enc_r
+
+        h = enc_e[triples[:, 0]]
+        h = F.normalize(h, p=2, dim=1)
+
+        ru = Rot_u[triples[:, 1]]
+        rs = Rel_s[triples[:, 1]]
+        rv = Rot_v[triples[:, 1]]
+
+        rs_max = torch.max(torch.abs(rs), dim=1, keepdim=True)[0]
+        rs = rs / rs_max
+
+        uh = givens_rotation(ru, h)
+        suh = rs * uh
+        lhs = givens_rotation(rv, suh)
+
+        self.reg = [h, ru, rs, rv] # to avoid duplicated computation in reg
+
+        return lhs
+    
+    def get_candidates(self, triples, enc_e, eval_mode) -> Tensor:
+        if not eval_mode:
+            return F.normalize(enc_e[triples[:, 2]], p=2, dim=1)
+        else:
+            return F.normalize(enc_e, p=2, dim=1) # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
+
+    
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+        t = enc_e[triples[:, 2]]
+        t = F.normalize(t, p=2, dim=1)
+        self.reg.append(t)
+        return self.reg
+
+        
     
     
 class RotE(DBModel):

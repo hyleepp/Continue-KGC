@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from utils import dataset_utils
+from utils import dataset
 from collections import defaultdict
 
  
@@ -234,7 +234,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
     """
 
     # generate a folder
-    dataset_utils.mkdir(data_path + "/active_learning" + f"/{init_ratio}") 
+    dataset.mkdir(data_path + "/active_learning" + f"/{init_ratio}") 
 
     # load total data
     with open(data_path + "/total.txt", 'r') as f:
@@ -245,7 +245,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
     shuffle(triples)
 
     # generate the scaffold, i.e., ensure every entities appear in init_shape
-    n_ent, n_rel = dataset_utils.get_entity_and_relation_size(triples)
+    n_ent, n_rel = dataset.get_entity_and_relation_size(triples)
 
     n_init = int(len(triples) * init_ratio)
 
@@ -269,13 +269,13 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
 
     # save as pickle
     with open(os.path.join(data_path, "active_learning", str(init_ratio), "init_triples.pkl"), 'wb') as f:
-        int_init_triples = dataset_utils.triples_str_to_int(init_triples)
+        int_init_triples = dataset.triples_str_to_int(init_triples)
         ndarray_init_triples = np.asarray(int_init_triples).astype('int64')
         ndarray_init_triples = torch.from_numpy(ndarray_init_triples)
         pkl.dump(ndarray_init_triples, f)
 
     with open(os.path.join(data_path, "active_learning", str(init_ratio), "unexplored_triples.pkl"), 'wb') as f:
-        int_unexplored_triples = dataset_utils.triples_str_to_int(unexplored_triples)
+        int_unexplored_triples = dataset.triples_str_to_int(unexplored_triples)
         ndarray_unexplored_tripls = np.asarray(int_unexplored_triples).astype('int64')
         ndarray_unexplored_tripls = torch.from_numpy(ndarray_unexplored_tripls)
         pkl.dump(ndarray_unexplored_tripls, f)
@@ -285,8 +285,8 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
         query_filter = generate_query_filter(os.path.join(data_path, 'active_learning', str(init_ratio)), init_triples, id2class, n_rel)
 
     # transform to writable ones
-    init_triples = dataset_utils.triples_to_lines(init_triples)
-    unexplored_triples = dataset_utils.triples_to_lines(unexplored_triples)
+    init_triples = dataset.triples_to_lines(init_triples)
+    unexplored_triples = dataset.triples_to_lines(unexplored_triples)
 
     # write txt version
     with open(os.path.join(data_path, "active_learning", str(init_ratio), "init_triples.txt"), 'w') as f:

@@ -86,6 +86,7 @@ class KGOptimizer(nn.Module):
 
         predictions, reg_factor = self.model(triples, eval_mode=True)
         truth = triples[:, 2]
+        predictions *= self.sta_scale # temperature
 
         loss = self.loss_fn(predictions, truth) # TODO add other losses
 

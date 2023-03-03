@@ -5,8 +5,9 @@ from abc import abstractmethod, ABC
 import torch
 import torch.nn as nn
 from torch import Tensor
+from utils.calculation import givens_rotation
 
-ALL_REGULARIZER = ["F2", "DURA_RESCAL", "DURA_W"] # log for all regs
+ALL_REGULARIZER = ["F2", "DURA_RESCAL", "DURA_W", "DURA_UniBi_2"] # log for all regs
 
 class Regularizer(nn.Module, ABC):
     '''Base class of all regularizer'''
@@ -62,4 +63,24 @@ class DURA_W(Regularizer):
         h, r, t = factors
         norm += 0.5 *torch.sum(t**2 + h**2)
         norm += 1.5 * torch.sum(h**2 * r**2 +  t**2 *  r**2)
+        return self.weight * norm / h.shape[0]
+
+class DURA_UniBi_2(Regularizer):
+    def __init__(self, weight: float):
+        super().__init__(weight)
+        self.weight = weight
+    
+    def forward(self, factors):
+        norm = 0
+        h, Rot_u, Rel_s, Rot_v, t = factors # they have been processed
+        uh = givens_rotation(Rot_u, h)
+        suh = Rel_s * uh
+
+        vt = givens_rotation(Rot_v, t, transpose=True)
+        svt = Rel_s * vt
+
+        norm += torch.sum(
+            suh ** 2 + svt ** 2 + h ** 2 + t ** 2
+        )
+
         return self.weight * norm / h.shape[0]
