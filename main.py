@@ -418,6 +418,7 @@ class ActiveLearning(object):
             torch.cuda.empty_cache()
         
         assert left > 0, "the memory is not enough, please choose a lower hidden size or do sth else"
+        logging.info(f'max_batch_for_inference is {left + 1}')
 
         return left + 1
     
@@ -473,41 +474,57 @@ class ActiveLearning(object):
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
             
             # try to achieve the maximum capacity in the following progress
+
+            # todo 在这里变成一种二分的模式, right 就是max，然后初始化为1000000，left就是cur，然后不断削减right的上限
+            # 进两步，退一步，这样更加自适应一点点
+            max_batch = self.max_batch_for_inference
             
-            # todo change the logic in here
+            # todo use a dataloader in here, since randomly we will get abetter threshold for after steps of getting entities
             with tqdm (total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 cur_seen = set()
                 while batch_begin < len(candidate_queries):
-                    queries = candidate_queries[batch_begin: batch_begin + batch_size]
-                    scores, _ = self.model(queries, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
+                    try:
+                        queries = candidate_queries[batch_begin: batch_begin + batch_size]
+                        scores, _ = self.model(queries, eval_mode=True, require_reg=False) # (BS x N_ent) (h x t)
 
-                    # store to heap and screen out unqualified ones in parallel style
-                    remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
+                        # store to heap and screen out unqualified ones in parallel style
+                        remain_scores_idx = (scores > heap[0].value).nonzero() # the idx of possible scores 
 
-                    # update heap
-                    # TODO see if we let this run on cpu and we continue gpu processes 
-                    for i in range(len(remain_scores_idx)):
-                        query_idx, t = remain_scores_idx[i]
-                        score = scores[query_idx, t]
-                        if score > heap[0].value:
-                            triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) 
-                            # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
-                            triple_tuple = tuple(triple.tolist())
-                            if triple_tuple not in self.previous_true_set and \
-                            triple_tuple not in self.previous_false_set and \
-                            triple_tuple not in cur_seen: # todo find some better way to do so
-                                heapq.heapreplace(heap, HeapNode((score.item(), triple)))
-                                reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
-                                cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
-                    
-                    bar.update(batch_size)
-                    bar.set_postfix(min_score=f'{heap[0].value:.3f}')
+                        # update heap
+                        # TODO see if we let this run on cpu and we continue gpu processes 
+                        for i in range(len(remain_scores_idx)):
+                            query_idx, t = remain_scores_idx[i]
+                            score = scores[query_idx, t]
+                            if score > heap[0].value:
+                                triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) 
+                                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                                triple_tuple = tuple(triple.tolist())
+                                if triple_tuple not in self.previous_true_set and \
+                                triple_tuple not in self.previous_false_set and \
+                                triple_tuple not in cur_seen: # todo find some better way to do so
+                                    heapq.heapreplace(heap, HeapNode((score.item(), triple)))
+                                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
+                                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
+                        
+                        bar.update(batch_size)
+                        bar.set_postfix(min_score=f'{heap[0].value:.3f}')
 
-                    del queries, scores, remain_scores_idx
-                    torch.cuda.empty_cache()
-                    batch_begin += batch_size
-                    batch_size = min(2 * batch_size, self.max_batch_for_inference) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+                        del queries, scores, remain_scores_idx
+                        torch.cuda.empty_cache()
+                        batch_begin += batch_size
+                        # batch_size *= 2
+                        batch_size = min(2 * batch_size, max_batch) # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
+                    except torch.cuda.OutOfMemoryError:
+                        '''there may met OOM, since the max_batch is not perfect, but we want the inference continue.
+                            And this imperfectness comes from the memory size of queries.
+
+                            Although this try except structure slows the speed in some degree, the guarantee of safety worth it.
+                            Since we do not want to rerun a model after few days :(
+                        '''
+                        batch_size = int(batch_size * 9 / 10) # 
+                        max_batch = batch_size
+                        # it should be noticed that bigger the model size, faster the inference
 
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
