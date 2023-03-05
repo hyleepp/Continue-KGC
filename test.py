@@ -1,4 +1,5 @@
+1, 2, 3
 adasd
-sadsada
-dssd
 
+def a(x):
+    return x + 1
