@@ -1,4 +1,4 @@
-import datetime 
+import datetime
 import os
 import json
 from collections import defaultdict
@@ -9,7 +9,8 @@ import pickle as pkl
 
 DOTS = '********'
 
-def get_savedir(model_name:str, dataset_name:str) -> str:
+
+def get_savedir(model_name: str, dataset_name: str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
@@ -17,9 +18,10 @@ def get_savedir(model_name:str, dataset_name:str) -> str:
         os.environ["LOG_DIR"], date, dataset_name,
         model_name + dt.strftime('_%H_%M_%S')
     )
-    
+
     os. makedirs(save_dir)
     return save_dir
+
 
 def count_param(model) -> int:
     '''Count the number of parameters of the given model'''
@@ -31,8 +33,9 @@ def count_param(model) -> int:
             for y in x.shape:
                 res *= y
             total += res
-    
+
     return total
+
 
 def avg_both(mrs, mrrs, hits) -> dict:
     """average metrics in both direction
@@ -49,8 +52,9 @@ def avg_both(mrs, mrrs, hits) -> dict:
     mr = (mrs['lhs'] + mrs['rhs']) / 2
     mrr = (mrrs['lhs'] + mrrs['rhs']) / 2
     hit = (hits['lhs'] + hits['rhs']) / 2
-    
+
     return {'MR': mr, "MRR": mrr, 'hits@{1,3,10}': hit}
+
 
 class HeapNode(object):
     '''help to use a heap to get top-k pairs of (score, triple) based on scores.
@@ -60,20 +64,23 @@ class HeapNode(object):
     def __init__(self, tuple) -> None:
         self.value, self.triple = tuple
         return
-    
+
     def __lt__(self, other) -> bool:
-        return self.value < other.value # triples are incompatible
+        return self.value < other.value  # triples are incompatible
+
 
 def tensor2set(tensor) -> set:
     '''convert a (N x 3) tensor to a set of triples'''
     ret = set()
 
     for i in range(len(tensor)):
-        ret.add((tensor[i][0].item(), tensor[i][1].item(), tensor[i][2].item()))
-    
+        ret.add((tensor[i][0].item(), tensor[i]
+                [1].item(), tensor[i][2].item()))
+
     return ret
 
-def load_query_filter(path:str) -> dict:
+
+def load_query_filter(path: str) -> dict:
     """load the query filter based on entity class (like human)
     That contains the legal pattern appeared in triples, like ['human', 'like'],
     and helps to filter out the ridiculous combination like ['human', 'isLocated']
@@ -84,13 +91,14 @@ def load_query_filter(path:str) -> dict:
     Returns:
         dict: _description_
     """
-    path_filter = os.path.join(path, 'relation_filter.pkl') 
+    path_filter = os.path.join(path, 'relation_filter.pkl')
 
     with open(path_filter, 'rb') as f:
         filter = pkl.load(f)
-    return filter 
+    return filter
 
-def load_id2class(path:str) -> dict:
+
+def load_id2class(path: str) -> dict:
     """load the idx2class dict (1: 'human', 2: "film")
     the class information is get from the "is instance of" relation from wikidata. And we will
     use this class information to filter some ridiculous pairs of entity and relation (like [human, isLocated])
@@ -101,14 +109,14 @@ def load_id2class(path:str) -> dict:
     Returns:
         idx2class: a dict that map each idx to its class like {1: 'human'}
     """
-    path_idx2class = os.path.join(path, 'idx2class.pkl') 
+    path_idx2class = os.path.join(path, 'idx2class.pkl')
 
     with open(path_idx2class, 'rb') as f:
         idx2class = pkl.load(f)
     return idx2class
 
 
-def show_the_cover_rate(unexplored_triples:list, init_filter:dict, idx2class:dict, n_rel:int) -> None:
+def show_the_cover_rate(unexplored_triples: list, init_filter: dict, idx2class: dict, n_rel: int) -> None:
     """show the cover rate of init filter on unexplored triples
 
     Args:
@@ -119,7 +127,7 @@ def show_the_cover_rate(unexplored_triples:list, init_filter:dict, idx2class:dic
     """
 
     count_in_init = 0
-    count_class_not_recorded = 0 # some entity miss the wiki information
+    count_class_not_recorded = 0  # some entity miss the wiki information
 
     for triple in unexplored_triples:
         h, r, t = triple
@@ -128,12 +136,15 @@ def show_the_cover_rate(unexplored_triples:list, init_filter:dict, idx2class:dic
             if r in init_filter[h_class] or r + n_rel in init_filter[t_class]:
                 count_in_init += 1
         else:
-            count_class_not_recorded += 1 
+            count_class_not_recorded += 1
 
-    logging.info(f'init filter cover rate: {count_in_init / len(unexplored_triples)}')
-    logging.info(f'init filter + ignore unrecorded cover rate: {(count_in_init + count_class_not_recorded) / len(unexplored_triples)}')
+    logging.info(
+        f'init filter cover rate: {count_in_init / len(unexplored_triples)}')
+    logging.info(
+        f'init filter + ignore unrecorded cover rate: {(count_in_init + count_class_not_recorded) / len(unexplored_triples)}')
 
     return
+
 
 def get_seen_filters(examples, n_relations):
     """Create seen filtering lists for evaluation.
@@ -149,7 +160,7 @@ def get_seen_filters(examples, n_relations):
     lhs_filters = defaultdict(set)
     rhs_filters = defaultdict(set)
     for example in examples:
-        lhs, rel, rhs = list(map(lambda x: x.item(),example))
+        lhs, rel, rhs = list(map(lambda x: x.item(), example))
         rhs_filters[(lhs, rel)].add(rhs)
         lhs_filters[(rhs, rel + n_relations)].add(lhs)
     lhs_final = {}
@@ -160,3 +171,37 @@ def get_seen_filters(examples, n_relations):
         rhs_final[k] = sorted(list(v))
     filters = {'lhs': lhs_final, "rhs": rhs_final}
     return filters
+
+
+def prepare_logger(save_dir: str) -> None:
+    '''Prepare logger and add a stream handler'''
+
+    # init logger
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)-8s %(message)s",
+        level=logging.INFO,
+        datefmt="%Y-%M-%d %H:%M:%S",
+        filename=os.path.join(save_dir, "run.log")
+    )
+
+    # Sync logging info to stdout
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(levelname)-8s %(message)s")
+    console.setFormatter(formatter)
+    # add the StreamHandler to root Logger
+    logging.getLogger('').addHandler(console)
+    logging.info(f"Saving logs in {save_dir}")
+
+    return
+
+
+def save_config(args, save_dir) -> None:
+    '''save the config in both logger and json'''
+
+    for k, v in sorted(vars(args).items()):
+        logging.info(f'{k} = {v}')
+    with open(os.path.join(save_dir, "config.json"), "w") as fjson:
+        json.dump(vars(args), fjson)
+
+    return

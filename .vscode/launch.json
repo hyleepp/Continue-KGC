@@ -34,6 +34,7 @@
                 // "--pretrained_model_id", "logs/02_27/FB15K/RotE_21_42_07",
                 // "--pretrained_model_id", "logs/03_02/FB15K/RotE_14_46_54",
                 // "--pretrained_model_id", "logs/03_02/FB15K/ComplEx_21_05_19",
+                "--pretrained_model_id",  "logs/03_03/FB15K/UniBi_2_20_01_27",
                 "--active_num", "10000",
                 "--incremental_learning_epoch", "10",
             ]
