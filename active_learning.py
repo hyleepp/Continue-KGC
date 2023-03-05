@@ -3,7 +3,6 @@ import os
 import heapq
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -31,22 +30,18 @@ class ActiveLearning(object):
         # TODO use dataloader
         # self.max_batch_for_inference = self.get_max_batch_for_inference() # this need to be done before load the following data, since it will occupy more memory
         self.max_batch_for_inference = args.max_batch_for_inference
-        self.init_triples = self.dataset.get_triples('init', use_reciprocal=True).to(
-            args.device)  # here we consider training is default to use reciprocal setting
-        self.unexplored_triples = self.dataset.get_triples(
-            'unexplored', use_reciprocal=True).to(args.device)
+        self.init_triples = self.dataset.get_triples('init', use_reciprocal=True).to(args.device)  # here we consider training is default to use reciprocal setting
+        self.unexplored_triples = self.dataset.get_triples('unexplored', use_reciprocal=True).to(args.device)
 
         # TODO refactor
         triples_raw = self.dataset.get_triples('init')
         n_init = int(self.args.train_ratio * len(triples_raw))
         train_triples, valid_triples = triples_raw[:n_init], triples_raw[n_init:]
-        train_triples = self.dataset.add_reciprocal(
-            train_triples)  # only train needs rec
+        train_triples = self.dataset.add_reciprocal(train_triples)  # only train needs rec
         self.train_triples = train_triples.to(args.device)
         self.valid_triples = valid_triples.to(args.device)
         # the filter setting in evaluation of mrr and hits
-        self.entity_filters = get_seen_filters(
-            self.train_triples, self.args.n_rel)
+        self.entity_filters = get_seen_filters(self.train_triples, self.args.n_rel)
         del triples_raw, train_triples, valid_triples
 
         # used in incremental learning
@@ -93,8 +88,7 @@ class ActiveLearning(object):
         save_config(args, save_dir)
 
         # Load data, default for active learning
-        logging.info(
-            f"\t Loading dataset {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape())}")
+        logging.info(f"\t Loading dataset {args.dataset} in {args.setting} setting, with shape {str(dataset.get_shape())}")
 
         # TODO ce_weight
 
@@ -109,12 +103,10 @@ class ActiveLearning(object):
 
     def get_validation_metric(self, valid_triples) -> float:
 
-        valid_metrics = self.model.calculate_metrics(
-            valid_triples, self.entity_filters)
+        valid_metrics = self.model.calculate_metrics(valid_triples, self.entity_filters)
         valid_metrics = avg_both(*valid_metrics)
 
-        logging.info(
-            f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
+        logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
 
         valid_mrr = valid_metrics['MRR']
 
@@ -131,12 +123,9 @@ class ActiveLearning(object):
         """
 
         if reset_model:
-            self.model = getattr(models, self.args.model)(
-                self.args).to(self.device)
-        regularizer = getattr(Regularizer, self.args.regularizer)(
-            self.args.reg_weight)
-        optim_method = getattr(torch.optim, self.args.optimizer)(
-            self.model.parameters(), lr=self.args.pretrain_learning_rate)
+            self.model = getattr(models, self.args.model)(self.args).to(self.device)
+        regularizer = getattr(Regularizer, self.args.regularizer)(self.args.reg_weight)
+        optim_method = getattr(torch.optim, self.args.optimizer)(self.model.parameters(), lr=self.args.pretrain_learning_rate)
         optimizer = KGOptimizer(self.model, optim_method, regularizer, self.args.batch_size,
                                 self.args.neg_size, self.args.sta_scale, debug=self.args.debug)
         self.model.train()
@@ -149,16 +138,13 @@ class ActiveLearning(object):
 
         if not self.args.pretrained_model_id:
 
-            logging.info(
-                "\t Do not specific a pretraiend model, then training from scratch.")
+            logging.info("\t Do not specific a pretraiend model, then training from scratch.")
 
             # phase 1
             if not self.args.skip_phase_1:
-                logging.info(
-                    "\t Start pretraining phase 1: on training split.")
+                logging.info("\t Start pretraining phase 1: on training split.")
                 self.pretrain_phase('train and valid')
-                logging.info(
-                    "\t Pretrain phase 1 optimization finished, get the best training epoch")
+                logging.info("\t Pretrain phase 1 optimization finished, get the best training epoch")
             else:
                 logging.info("\t Skip the first stage")
 
@@ -169,14 +155,11 @@ class ActiveLearning(object):
 
             # save model
             logging.info(f"\t Saving model in {self.args.save_dir}.")
-            torch.save(self.model.cpu().state_dict(),
-                       os.path.join(self.args.save_dir, "model.pt"))
+            torch.save(self.model.cpu().state_dict(),os.path.join(self.args.save_dir, "model.pt"))
             self.model.cuda()
         else:
             logging.info(f"\t Load pretrained model.")
-            # load model
-            self.model.load_state_dict(torch.load(
-                os.path.join(self.args.pretrained_model_id, "model.pt")))
+            self.model.load_state_dict(torch.load(os.path.join(self.args.pretrained_model_id, "model.pt")))
             logging.info("\t Load model successfully.")
 
         return
@@ -209,22 +192,21 @@ class ActiveLearning(object):
             train_triples = self.init_triples
 
         best_mrr = 0
+        
+        # training
         for step in range(self.best_epoch):
 
             # Train step
             self.model.train()
             train_loss = optimizer.pretraining_epoch(train_triples, 'train')
-            logging.info(
-                f"\t Epoch {step} | average train loss: {train_loss:.4f}")
+            logging.info(f"\t Epoch {step} | average train loss: {train_loss:.4f}")
             self.writer.add_scalar('train_loss', train_loss, step)
 
             # Valid step
             if phase == 'train and valid':  # only used in phase 1
                 self.model.eval()
-                valid_loss = optimizer.pretraining_epoch(
-                    valid_triples, 'valid')
-                logging.info(
-                    f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
+                valid_loss = optimizer.pretraining_epoch(valid_triples, 'valid')
+                logging.info(f"\t Epoch {step} | average valid loss: {valid_loss:.4f}")
                 self.writer.add_scalar('valid_loss', valid_loss, step)
 
                 # Test on valid
@@ -236,8 +218,7 @@ class ActiveLearning(object):
                         best_mrr = valid_mrr
                         counter = 0
                         self.best_epoch = step
-                        logging.info(
-                            "Best results updated, save current model.")
+                        logging.info("Best results updated, save current model.")
 
                     else:
                         counter += 1
@@ -261,26 +242,20 @@ class ActiveLearning(object):
         '''
         # todo handle the multi-card problem
 
-        torch.cuda.empty_cache()
-        left = 0
-        right = 100000  # a number large enough
+        left, right = 0, 100000 # a number large enough
 
-        # dichotomy
-        # does not need to be very precise
+        # dichotomy, does not need to be very precise
         while left < right + 1 and (right - left) / right > 0.01:
             mid = (left + right) // 2
+            torch.cuda.empty_cache()
             try:
-                query = torch.ones((mid, 2)).type(torch.LongTensor)
-                query = query.to(self.device)
-                scores, _ = self.model(
-                    query, eval_mode=True, require_reg=False)
-                # the idx of possible scores
-                remain_scores_idx = (scores > float('-inf')).nonzero()
+                query = torch.ones((mid, 2)).type(torch.LongTensor).to(self.device)
+                scores, _ = self.model(query, eval_mode=True, require_reg=False)
+                remain_scores_idx = (scores > float('-inf')).nonzero() # the idx of possible scores
                 left = mid
                 del query, scores, remain_scores_idx
             except:
                 right = mid
-            torch.cuda.empty_cache()
 
         assert left > 0, "the memory is not enough, please choose a lower hidden size or do sth else"
         logging.info(f'max_batch_for_inference is {left + 1}')
@@ -301,8 +276,7 @@ class ActiveLearning(object):
             # TODO keep two separate processes, and keep synchronization
             # 1. get possible nodes (indics)
             # 1.1 just simply all nodes, save this one as a baseline
-            focus_nodes = torch.arange(self.model.n_ent).to(
-                self.model.device)  # get all nodes # ! default, can be improved
+            focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
 
             # 1.2 get nodes via deviation ||\hat{e} - e||
             # 1.3 save as a queue or sth like this (merged with 1.2)
@@ -310,20 +284,15 @@ class ActiveLearning(object):
             # 2. propose a possible relations
             # filter, maybe not so meaningful, since the tensor may not be sparse enough
             candidate_queries = []
-            for node in focus_nodes:
-                class_name = self.id2class.get(node.item())
+            for node in focus_entities:
+                class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
                 if class_name:
-                    candidate_relations = list(
-                        self.query_filter.get(class_name))
-                    candidate_relations = torch.tensor(
-                        candidate_relations, dtype=node.dtype).to(node.device)
+                    candidate_relations = list(self.query_filter.get(class_name))
+                    candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
                 else:
-                    # use all relations
-                    candidate_relations = torch.arange(
-                        self.model.n_rel * 2).to(node.device)
+                    candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)  # use all relations
                 entity_col = torch.ones_like(candidate_relations) * node.item()
-                candidate_queries.append(torch.stack(
-                    (entity_col, candidate_relations), dim=1))
+                candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1))
 
             candidate_queries = torch.cat(candidate_queries, dim=0)
 
@@ -331,13 +300,11 @@ class ActiveLearning(object):
 
             # 3. inference and get the scores
             # use a prior queue, this is not algorithm related, so will not be highlighted in paper
-            heap = [HeapNode((float("-inf"), None))
-                    for _ in range(self.args.active_num)]
+            heap = [HeapNode((float("-inf"), None)) for _ in range(self.args.active_num)]
 
             # batch run
             # here a batch is set to be 1000 # TODO more flexible
-            batch_begin = 0
-            batch_size = 1  # todo fix the the problem of single input
+            batch_begin, batch_size = 0, 1
 
             # build triples
             # simply loop # TODO -> a little bit parallel
@@ -352,50 +319,54 @@ class ActiveLearning(object):
             # todo use a dataloader in here, since randomly we will get abetter threshold for after steps of getting entities
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
-                cur_seen = set()
                 while batch_begin < len(candidate_queries):
-                    queries = candidate_queries[batch_begin: batch_begin + batch_size]
-                    # (BS x N_ent) (h x t)
-                    scores, _ = self.model(
-                        queries, eval_mode=True, require_reg=False)
-
+                    queries = candidate_queries[batch_begin: batch_begin + batch_size] 
+                    scores, _ = self.model(queries, eval_mode=True, require_reg=False)
+                    passed_pair_idx = (scores > heap[0].value).nonzero() # the idx of possible scores, the idx is [query_idx, candidate_idx]
                     # store to heap and screen out unqualified ones in parallel style
-                    # the idx of possible scores
-                    remain_scores_idx = (scores > heap[0].value).nonzero()
 
-                    # update heap
-                    # TODO see if we let this run on cpu and we continue gpu processes
-                    for i in range(len(remain_scores_idx)):
-                        query_idx, t = remain_scores_idx[i]
-                        score = scores[query_idx, t]
-                        if score > heap[0].value:
-                            triple = torch.stack(
-                                (queries[query_idx][0], queries[query_idx][1], t))
-                            # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
-                            triple_tuple = tuple(triple.tolist())
-                            if triple_tuple not in self.previous_true_set and \
-                                    triple_tuple not in self.previous_false_set and \
-                                    triple_tuple not in cur_seen:  # todo find some better way to do so
-                                heapq.heapreplace(
-                                    heap, HeapNode((score.item(), triple)))
-                                reciprocal_tuple = (
-                                    triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
-                                # the reciprocal triples should also be filtered, they are equivalent in unexplored set
-                                cur_seen.add(reciprocal_tuple)
+                    self.update_heap(scores, queries, passed_pair_idx, heap)
 
                     bar.update(batch_size)
                     bar.set_postfix(min_score=f'{heap[0].value:.3f}')
 
-                    del queries, scores, remain_scores_idx
-                    torch.cuda.empty_cache()
                     batch_begin += batch_size
                     # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
-                    batch_size = min(
-                        2 * batch_size, self.max_batch_for_inference)
+                    batch_size = min(2 * batch_size, self.max_batch_for_inference)
 
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
         return heap
+    
+    def update_heap(self, scores, queries, pair_idx, heap) -> None:
+        """update the current heap with triples that has a score greater than the top of the heap.
+
+        Args:
+            scores (_type_): the scores of all triples, scores[i, j] means the score of i-th query and j-th candidate entity (or t for simplicity)
+            queries (_type_): [[h, r]] 
+            pair_idx (_type_): [query_idx, candidate_idx] 
+            heap (_type_): the heap that scores the most promised triples
+        """
+        # TODO see if we let this run on cpu and we continue gpu processes
+        cur_seen = set() # to avoid the case that both ori triple and its rec one all appears
+        for i in range(len(pair_idx)):
+            query_idx, t = pair_idx[i]
+            score = scores[query_idx, t]
+            if score > heap[0].value:
+                triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t))
+                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                triple_tuple = tuple(triple.tolist())
+                if triple_tuple not in self.previous_true_set and \
+                        triple_tuple not in self.previous_false_set and \
+                        triple_tuple not in cur_seen:  # todo find some better way to do so
+                    heapq.heapreplace(heap, HeapNode((score.item(), triple)))
+                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
+                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
+
+        del queries, scores, pair_idx 
+        torch.cuda.empty_cache()
+        
+        return 
 
     def verification(self, heap) -> tuple:
         """try to verify the candidate proposed by model are true or false in real graph.
@@ -419,10 +390,8 @@ class ActiveLearning(object):
             triple_tuple = tuple(node.triple.tolist())
             # build rec triple
             rec_triple = triple.clone()
-            rec_triple[0], rec_triple[1], rec_triple[2] = triple[2], (
-                triple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple[0]
-            rec_triple_tuple = (
-                triple_tuple[2], (triple_tuple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple_tuple[0])
+            rec_triple[0], rec_triple[1], rec_triple[2] = triple[2], (triple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple[0]
+            rec_triple_tuple = (triple_tuple[2], (triple_tuple[1] + self.model.n_rel) % (self.model.n_rel * 2), triple_tuple[0])
 
             if triple_tuple in self.unexplored_triples_set:
                 true_count += 1
@@ -458,8 +427,7 @@ class ActiveLearning(object):
             str(round(completion_ratio, 3)) + "."
         print(f"{DOTS} {s:<50} {DOTS}")
         self.writer.add_scalar("completion_ratio", completion_ratio, step)
-        self.writer.add_scalar('precision', true_count /
-                               (true_count + false_count), step)
+        self.writer.add_scalar('precision', true_count / (true_count + false_count), step)
 
         return
 
@@ -474,10 +442,8 @@ class ActiveLearning(object):
         # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
         logging.info(f"\t Start incremental learning at step {step}")
 
-        new_true = torch.stack(
-            self.new_true_list) if self.new_true_list else None
-        new_false = torch.stack(
-            self.new_false_list) if self.new_false_list else None
+        new_true = torch.stack(self.new_true_list) if self.new_true_list else None
+        new_false = torch.stack(self.new_false_list) if self.new_false_list else None
 
         # reset list
         self.new_true_list = []
@@ -491,12 +457,11 @@ class ActiveLearning(object):
         avg_incre_loss = 0
         for incre_step in range(self.args.incremental_learning_epoch):
             incre_loss = optimizer.incremental_epoch(
-                self.previous_true, self.previous_false, new_true, new_false, self.args.incremental_learning_method, args)
+                self.previous_true, self.previous_false, new_true, new_false, self.args.incremental_learning_method, self.args)
             self.writer.add_scalar('incre_loss', incre_loss, incre_step)
             avg_incre_loss += (incre_loss - avg_incre_loss) / (incre_step + 1)
 
-        logging.info(
-            f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
+        logging.info(f"\t Step {step} | average incre loss: {avg_incre_loss:.4f}")
         logging.info("\t Incremental learning finished.")
 
         # TODO use a basic incremental method instead of these two naive setting (finetune, retrain)
@@ -529,27 +494,22 @@ class ActiveLearning(object):
         self.pretrain()
 
         # continue active completion
-        completion_ratio = len(self.init_triples) / (len(self.init_triples) + len(
-            self.unexplored_triples))  # unexplored does not have reciprocal relations
-        logging.info(
-            f"Continue completion: {completion_ratio:.4f} -> {self.args.expected_completion_ratio} Starts.")
+        completion_ratio = len(self.init_triples) / (len(self.init_triples) + len(self.unexplored_triples))  # unexplored does not have reciprocal relations
+        logging.info(f"Continue completion: {completion_ratio:.4f} -> {self.args.expected_completion_ratio} Starts.")
         step = 0
 
         # TODO more general
         logging.info('\t generate relation filter')
-        self.id2class = load_id2class(
-            self.dataset.data_path) if self.args.dataset == "FB15K" else None
-        self.query_filter = load_query_filter(os.path.join(self.dataset.data_path, self.args.setting, str(
-            self.args.init_ratio))) if self.args.dataset == "FB15K" else None
+        self.id2class = load_id2class(self.dataset.data_path) if self.args.dataset == "FB15K" else None
+        self.query_filter = load_query_filter(
+            os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio))) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
         while completion_ratio < self.args.expected_completion_ratio:
             step += 1
             candidates = self.get_candidate_for_verification()
-            true_count, false_count, completion_ratio = self.verification(
-                candidates)
-            self.report_current_state(
-                step, true_count, false_count, completion_ratio)
+            true_count, false_count, completion_ratio = self.verification(candidates)
+            self.report_current_state(step, true_count, false_count, completion_ratio)
 
             if self.args.update_freq > 0 and step % self.args.update_freq == 0:  # < 0 means never update
                 self.incremental_learning(step)

@@ -126,7 +126,6 @@ def organize_args(args):
 if __name__ == "__main__":
 
     set_environ()
-
     args = prepare_parser()
     # args = organize_args(args) # TODO finish that 
     # TODO use not all args, but the specific part of args like args.base

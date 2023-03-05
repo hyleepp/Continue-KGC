@@ -14,6 +14,6 @@ python main.py \
     --incremental_learning_method retrain \
     --active_num 10000 \
     --incremental_learning_epoch 20 \
-    --update_freq -1 \
+    --update_freq 1 \
     --pretrained_model_id logs/03_04/FB15K/RotE_10_39_55 \
     
