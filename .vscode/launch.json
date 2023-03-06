@@ -18,7 +18,7 @@
                 "--setting", "active_learning",
                 "--init_ratio", "0.9",
                 "--max_epochs", "100",
-                "--update_freq", "-1",
+                "--update_freq", "1",
                 "--patient", "2",
                 "--regularizer", "DURA_UniBi_2",
                 "--reg_weight", "2",

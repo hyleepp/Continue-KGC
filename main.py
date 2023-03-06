@@ -92,7 +92,7 @@ def prepare_parser():
 
     '''Incremental Part''' 
     parser.add_argument(
-        "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune'], help="the specific method used in incremental learning"
+        "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune', 'reset'], help="the specific method used in incremental learning"
     )
     parser.add_argument(
         "--incremental_learning_epoch", type=int, default=10, help="the epoch of incremental learning"
@@ -114,6 +114,9 @@ def prepare_parser():
     )
     parser.add_argument(
         "--max_batch_for_inference", type=int, default=15000, help="the max batch when trying to get candidates"
+    )
+    parser.add_argument(
+        "--diff_weight", type=float, default=1e-3, help="the weight on the difference between new embedding and cur embedding"
     )
 
     return parser.parse_args()

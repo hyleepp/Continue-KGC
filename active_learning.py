@@ -450,7 +450,7 @@ class ActiveLearning(object):
         self.new_false_list = []
 
         # incremental training
-        reset_model = self.args.incremental_learning_method == 'retrain'
+        reset_model = self.args.incremental_learning_method == 'reset'
         optimizer = self.init_optimizer(reset_model)
 
         # training
