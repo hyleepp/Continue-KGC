@@ -232,12 +232,12 @@ class ActiveLearning(object):
         return
 
     def get_max_batch_for_inference(self):
+        # ! this function is abandoned, since we don't know the memory mechanism instead torch, a large batch may lead to a collapse unexpectedly 
         ''' get the max batch size when try to get candidates.
             since the following process involves a tensor with dynamic shape (remain_scores_idx),
             it is hard to choose the best number once for all.
             The result of this function is good enough
 
-            ! this function is abandoned, since I don't know the memory mechanism instead torch, a large batch may lead to a collapse unexpectedly 
             although we could use a try, expect strategy, this strategy itself will slow the inference, and we think this is unworthy
         '''
         # todo handle the multi-card problem

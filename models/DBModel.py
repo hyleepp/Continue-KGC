@@ -49,6 +49,7 @@ class TransE(DBModel):
     
     def __init__(self, args) -> None:
         super().__init__(args)
+        self.similarity_method = 'dist'
 
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
 
@@ -70,6 +71,17 @@ class RotatE(DBModel):
         hr = givens_rotation(r, h)
 
         return hr
+
+class CP(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+        self.similarity_method = 'dot'
+    
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        h = enc_e[triples[:, 0]]
+        r = enc_e[triples[:, 1]]
+        return h * r
     
 class ComplEx(DBModel):
 
@@ -172,7 +184,6 @@ class UniBi_2(DBModel):
             return F.normalize(enc_e[triples[:, 2]], p=2, dim=1)
         else:
             return F.normalize(enc_e, p=2, dim=1) # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
-
     
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         t = enc_e[triples[:, 2]]
@@ -180,8 +191,6 @@ class UniBi_2(DBModel):
         self.reg.append(t)
         return self.reg
 
-        
-    
     
 class RotE(DBModel):
     '''rotate + trans'''
@@ -230,8 +239,3 @@ class RotE(DBModel):
     
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         return enc_e[0][triples[:, 0]], enc_e[1][triples[:, 1]], enc_r[0][triples[:, 1]], enc_r[1][triples[:, 1]], enc_e[0][triples[:, 2]], enc_e[1][triples[:, 2]],  # enc_r = trans + rot
-    
-            
-
-
-        
