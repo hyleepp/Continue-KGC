@@ -121,9 +121,9 @@ class ComplEx(DBModel):
         t = enc_e[triples[:, 0]]
         t_r, t_i = t[:, self.hidden_size // 2:], t[:, :self.hidden_size // 2]
 
-        head_f = torch.sqrt(h_r[0] ** 2 + h_i[1] ** 2 + EPSILON)
-        rel_f = torch.sqrt(r_r[0] ** 2 + r_i[1] ** 2 + EPSILON)
-        tail_f = torch.sqrt(t_r[0] ** 2 + t_i[1] ** 2 + EPSILON)
+        head_f = torch.sqrt(h_r ** 2 + h_i ** 2 + EPSILON)
+        rel_f = torch.sqrt(r_r ** 2 + r_i ** 2 + EPSILON)
+        tail_f = torch.sqrt(t_r ** 2 + t_i ** 2 + EPSILON)
 
         return head_f, rel_f, tail_f
 
