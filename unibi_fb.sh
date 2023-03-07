@@ -13,7 +13,7 @@ python main.py \
     --reg_weight 2 \
     --incremental_learning_method retrain \
     --active_num 10000 \
-    --incremental_learning_epoch 40 \
+    --incremental_learning_epoch 10 \
     --update_freq 10 \
     --sta_scale 60 \
     --pretrained_model_id logs/03_03/FB15K/UniBi_2_20_01_27 \

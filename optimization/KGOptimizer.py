@@ -140,11 +140,12 @@ class KGOptimizer(nn.Module):
         else:
             raise ValueError
 
-        triples = triples[torch.randperm(triples.shape[0]), :]
         
         if len(triples) == 0:
             return float('nan') # if there is not new triples, then do not need to calculate loss
         
+        triples = triples[torch.randperm(triples.shape[0]), :]
+
         with tqdm(total=triples.shape[0], unit='ex', disable=not self.verbose) as bar:
             bar.set_description(f"Incremental training {method} loss")
             loss = self.epoch(triples, bar, mode='train', pre_emb_ent=pre_emb_ent)
