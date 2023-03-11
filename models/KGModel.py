@@ -5,9 +5,10 @@
 
 from abc import ABC, abstractmethod
 from typing import Tuple
-
+from copy import deepcopy
 import numpy as np
 from numpy import ndarray
+import sys
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -16,7 +17,8 @@ class KGModel(nn.Module, ABC):
 
     def __init__(self, args) -> None: # here we use args is because we need to implement various of models that need different params
         super().__init__()
-
+        
+        self.args = args
         self.n_ent = args.n_ent
         self.n_rel = args.n_rel
         self.hidden_size = args.hidden_size
@@ -152,7 +154,7 @@ class KGModel(nn.Module, ABC):
 
         return scores, reg_factor
     
-    def calculate_metrics(self, triples: Tensor, filters: dict, batch_size=500) -> Tuple:
+    def calculate_metrics(self, triples: Tensor, total_graph, filters: dict, batch_size=500) -> Tuple:
         """calculate metrics given the triples 
 
         Args:
@@ -176,7 +178,7 @@ class KGModel(nn.Module, ABC):
                 q[:, 1] = q[:, 1] + self.n_rel
                 
             # get ranking
-            ranks = self.get_ranking(q, filter=filters[m], batch_size=batch_size)
+            ranks = self.get_ranking(q, total_graph, filter=filters[m], batch_size=batch_size)
             mean_rank[m] = torch.mean(ranks).item()
             mean_reciprocal_rank[m] = torch.mean(1. / ranks).item()
             hits_at[m] = torch.FloatTensor((list(map(
@@ -186,7 +188,7 @@ class KGModel(nn.Module, ABC):
         return mean_rank, mean_reciprocal_rank, hits_at
 
 
-    def get_ranking(self, triples, filter, batch_size) -> Tensor:
+    def get_ranking(self, triples, total_graph, filter, batch_size) -> Tensor:
         """calculate the rank of the tail entity againist all candidate entities for each triple 
 
         Args:
@@ -232,6 +234,4 @@ class KGModel(nn.Module, ABC):
                 b_begin += batch_size
             
         return ranks
-
-
 

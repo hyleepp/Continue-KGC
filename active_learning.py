@@ -70,7 +70,7 @@ class ActiveLearning(object):
             model, dataset, optimizer
         """
 
-        save_dir = get_savedir(args.model, args.dataset)
+        save_dir = get_savedir(args.model, args.dataset, args.gcn_type)
         args.save_dir = save_dir  # which will be used further
 
         prepare_logger(save_dir)
@@ -101,9 +101,9 @@ class ActiveLearning(object):
 
         return dataset, model, writer
 
-    def get_validation_metric(self, valid_triples) -> float:
+    def get_validation_metric(self, valid_triples, total_graph) -> float:
 
-        valid_metrics = self.model.calculate_metrics(valid_triples, self.entity_filters)
+        valid_metrics = self.model.calculate_metrics(valid_triples, total_graph, self.entity_filters)
         valid_metrics = avg_both(*valid_metrics)
 
         logging.info(f"MRR: {valid_metrics['MRR']:.3f}, Hits@1: {valid_metrics['hits@{1,3,10}'][0]:.3f}, Hits@3: {valid_metrics['hits@{1,3,10}'][1]:.3f}, Hits@10: {valid_metrics['hits@{1,3,10}'][2]:.3f} ")
@@ -178,7 +178,7 @@ class ActiveLearning(object):
         """
 
         assert phase in ['train and valid', 'united'], 'wrong phase name'
-        if phase == 'unite' and self.best_epoch == 0:
+        if phase == 'united' and self.best_epoch == 0:
             raise ValueError("the value of best epoch has some question")
 
         # the model in two phrase are different
@@ -212,7 +212,7 @@ class ActiveLearning(object):
                 # Test on valid
                 if (step + 1) % self.args.valid_period == 0:
 
-                    valid_mrr = self.get_validation_metric(valid_triples)
+                    valid_mrr = self.get_validation_metric(valid_triples, train_triples)
 
                     if not best_mrr or valid_mrr > best_mrr:
                         best_mrr = valid_mrr
@@ -262,7 +262,23 @@ class ActiveLearning(object):
 
         return left + 1
 
-    def get_candidate_for_verification(self) -> list:
+    def get_total_candidates(self, ):
+        focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
+        candidate_queries = []
+        for node in focus_entities:
+            class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
+            if class_name:
+                candidate_relations = list(self.query_filter.get(class_name))
+                candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
+            else:
+                candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)  # use all relations
+            entity_col = torch.ones_like(candidate_relations) * node.item()
+            candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1)) # (num_pairs, 2)
+
+        candidate_queries = torch.cat(candidate_queries, dim=0)
+        return candidate_queries
+
+    def get_candidate_for_verification(self, candidate_queries) -> list:
         """try to give each possible link (or some of them, since we may have a filter function),
         and return the top-k highest candidates for verification in next step. Here we use a heap to help sort. 
 
@@ -276,25 +292,25 @@ class ActiveLearning(object):
             # TODO keep two separate processes, and keep synchronization
             # 1. get possible nodes (indics)
             # 1.1 just simply all nodes, save this one as a baseline
-            focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
-
+            # focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
+            # [0, 1, 2, ...]
             # 1.2 get nodes via deviation ||\hat{e} - e||
             # 1.3 save as a queue or sth like this (merged with 1.2)
 
             # 2. propose a possible relations
             # filter, maybe not so meaningful, since the tensor may not be sparse enough
-            candidate_queries = []
-            for node in focus_entities:
-                class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
-                if class_name:
-                    candidate_relations = list(self.query_filter.get(class_name))
-                    candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
-                else:
-                    candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)  # use all relations
-                entity_col = torch.ones_like(candidate_relations) * node.item()
-                candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1))
+            # candidate_queries = []
+            # for node in focus_entities:
+            #     class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
+            #     if class_name:
+            #         candidate_relations = list(self.query_filter.get(class_name))
+            #         candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
+            #     else:
+            #         candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)  # use all relations
+            #     entity_col = torch.ones_like(candidate_relations) * node.item()
+            #     candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1)) # (num_pairs, 2)
 
-            candidate_queries = torch.cat(candidate_queries, dim=0)
+            # candidate_queries = torch.cat(candidate_queries, dim=0)
 
             # TODO also limits the possible tails
 
@@ -320,8 +336,8 @@ class ActiveLearning(object):
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 while batch_begin < len(candidate_queries):
-                    queries = candidate_queries[batch_begin: batch_begin + batch_size] 
-                    scores, _ = self.model(queries, eval_mode=True, require_reg=False)
+                    queries = candidate_queries[batch_begin: batch_begin + batch_size] # (bs, 2)
+                    scores, _ = self.model(queries, eval_mode=True, require_reg=False) # scores and reg_factor
                     passed_pair_idx = (scores > heap[0].value).nonzero() # the idx of possible scores, the idx is [query_idx, candidate_idx]
                     # store to heap and screen out unqualified ones in parallel style
 
@@ -344,7 +360,7 @@ class ActiveLearning(object):
         Args:
             scores (_type_): the scores of all triples, scores[i, j] means the score of i-th query and j-th candidate entity (or t for simplicity)
             queries (_type_): [[h, r]] 
-            pair_idx (_type_): [query_idx, candidate_idx] 
+            pair_idx (_type_): [query_idx (h, r), candidate_idx (t)] 
             heap (_type_): the heap that scores the most promised triples
         """
         # TODO see if we let this run on cpu and we continue gpu processes
@@ -353,12 +369,13 @@ class ActiveLearning(object):
             query_idx, t = pair_idx[i]
             score = scores[query_idx, t]
             if score > heap[0].value:
-                triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t))
+                triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) # tensor([h, r, t])
                 # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
                 triple_tuple = tuple(triple.tolist())
                 if triple_tuple not in self.previous_true_set and \
                         triple_tuple not in self.previous_false_set and \
                         triple_tuple not in cur_seen:  # todo find some better way to do so
+                    # Remove the top element and rearrange it after adding new elements so that the smallest element is at the top of the heap again
                     heapq.heapreplace(heap, HeapNode((score.item(), triple)))
                     reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
                     cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
@@ -384,7 +401,6 @@ class ActiveLearning(object):
         # verification
         true_count, false_count = 0, 0
         for node in heap:
-
             # see if this triple in unexplored
             triple = node.triple
             triple_tuple = tuple(node.triple.tolist())
@@ -505,14 +521,17 @@ class ActiveLearning(object):
             os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio))) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
+        total_candidate = self.get_total_candidates()
         while completion_ratio < self.args.expected_completion_ratio:
             step += 1
-            candidates = self.get_candidate_for_verification()
+            candidates = self.get_candidate_for_verification(total_candidate)
             true_count, false_count, completion_ratio = self.verification(candidates)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
             if self.args.update_freq > 0 and step % self.args.update_freq == 0:  # < 0 means never update
                 self.incremental_learning(step)
+            if step == 500:
+                break
 
         logging.info(f"\t Completion finished at step {step}.")
 

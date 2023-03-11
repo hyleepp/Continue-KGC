@@ -5,9 +5,9 @@ from abc import abstractmethod, ABC
 import torch
 import torch.nn as nn
 from torch import Tensor
-from utils.calculation import givens_rotation
+from utils.calculation import givens_rotation, quaternion_rotation
 
-ALL_REGULARIZER = ["F2", "DURA_RESCAL", "DURA_W", "DURA_UniBi_2"] # log for all regs
+ALL_REGULARIZER = ["F2", "DURA_RESCAL", "DURA_W", "DURA_UniBi_2", "DURA_QuatE"] # log for all regs
 
 class Regularizer(nn.Module, ABC):
     '''Base class of all regularizer'''
@@ -83,4 +83,17 @@ class DURA_UniBi_2(Regularizer):
             suh ** 2 + svt ** 2 + h ** 2 + t ** 2
         )
 
+        return self.weight * norm / h.shape[0]
+
+class DURA_QuatE(Regularizer):
+    def __init__(self, weight: float):
+        super().__init__(weight)
+        self.weight = weight
+    
+    def forward(self, factors):
+        norm = 0
+        h, r, t = factors
+        hr = quaternion_rotation(r, h, right=True)
+        rt = quaternion_rotation(r, t, right=True, transpose=True)
+        norm += torch.sum(hr ** 2 + rt ** 2 + h ** 2 + t ** 2)
         return self.weight * norm / h.shape[0]

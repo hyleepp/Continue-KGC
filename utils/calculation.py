@@ -1,7 +1,11 @@
 '''some base calculations'''
 
 import torch
+import math
 from torch import Tensor 
+import torch.nn.functional as F
+from torch_scatter import scatter_add
+        
 
 def euc_distance(x: Tensor, y: Tensor, eval_mode=False) -> Tensor:
     """calculate eucidean distance
@@ -26,7 +30,6 @@ def euc_distance(x: Tensor, y: Tensor, eval_mode=False) -> Tensor:
         xy = torch.sum(x * y, dim=-1, keepdim=True)
 
     return x2 + y2 - 2 * xy
-
 
 
 def givens_rotation(r, x, transpose=False):
@@ -89,3 +92,26 @@ def quaternion_rotation(rotation, x, right = False, transpose = False):
 
     return rotated_vectors
     
+
+def uniform(size, tensor):
+    bound = 1.0 / math.sqrt(size)
+    if tensor is not None:
+        tensor.data.uniform_(-bound, bound)
+
+
+def edge_normalization(edge_type, edge_index, num_entity, num_relation):
+    '''
+        Edge normalization trick
+        - one_hot: (num_edge, num_relation)
+        - deg: (num_node, num_relation)
+        - index: (num_edge)
+        - deg[edge_index[0]]: (num_edge, num_relation)
+        - edge_norm: (num_edge)
+    '''
+    one_hot = F.one_hot(edge_type, num_classes = 2 * num_relation).to(torch.float)
+    ## statistics number of edges which connect to one entity, deg[i][j] = k means node i is connected by relation j k times.
+    deg = scatter_add(one_hot, edge_index[0], dim = 0, dim_size = num_entity)
+    index = edge_type + torch.arange(len(edge_index[0])).to(edge_type.device) * (2 * num_relation)
+    edge_norm = 1 / deg[edge_index[0]].view(-1)[index]
+
+    return edge_norm
