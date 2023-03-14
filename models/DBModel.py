@@ -232,7 +232,6 @@ class RotE(DBModel):
         v_q, bias_q = v_queries
         v_c, bias_c = v_candidates
 
-        # TODO continue here
         score = - euc_distance(v_q, v_c, eval_mode) + bias_q + (bias_c.t() if eval_mode else bias_c)
         
         return score

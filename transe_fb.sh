@@ -1,8 +1,8 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=4
 python main.py \
     --dataset FB15K \
-    --model ComplEx \
-    --regularizer DURA_W \
+    --model TransE \
+    --regularizer F2 \
     --setting active_learning \
     --batch_size 1000 \
     --init_ratio 0.9 \
@@ -15,5 +15,5 @@ python main.py \
     --active_num 10000 \
     --incremental_learning_epoch 20 \
     --update_freq -1 \
-    # --pretrained_model_id logs/02_16/FB15K/RESCAL_16_59_19 \
-    
+    --pretrained_model_id  logs/03_13/FB15K/TransE_20_03_41\
+

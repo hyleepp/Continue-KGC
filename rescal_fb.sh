@@ -1,13 +1,13 @@
 export CUDA_VISIBLE_DEVICES=0
 python main.py \
     --dataset FB15K \
-    --model ComplEx \
-    --regularizer DURA_W \
+    --model RESCAL \
+    --regularizer DURA_RESCAL \
     --setting active_learning \
     --batch_size 1000 \
     --init_ratio 0.9 \
     --patient 5 \
-    --hidden_size 500 \
+    --hidden_size 100 \
     --neg_size -1 \
     --max_epochs 100 \
     --reg_weight 0.0005\

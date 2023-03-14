@@ -13,6 +13,8 @@ from optimization import Regularizer
 from utils.train import *
 from dataset.KGDataset import KGDataset
 
+import random
+
 
 class ActiveLearning(object):
 
@@ -294,6 +296,7 @@ class ActiveLearning(object):
                 entity_col = torch.ones_like(candidate_relations) * node.item()
                 candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1))
 
+            random.shuffle(candidate_queries)
             candidate_queries = torch.cat(candidate_queries, dim=0)
 
             # TODO also limits the possible tails
@@ -305,6 +308,7 @@ class ActiveLearning(object):
             # batch run
             # here a batch is set to be 1000 # TODO more flexible
             batch_begin, batch_size = 0, 1
+            # batch_begin, batch_size = 0, self.max_batch_for_inference
 
             # build triples
             # simply loop # TODO -> a little bit parallel
@@ -351,7 +355,7 @@ class ActiveLearning(object):
         cur_seen = set() # to avoid the case that both ori triple and its rec one all appears
         for i in range(len(pair_idx)):
             query_idx, t = pair_idx[i]
-            score = scores[query_idx, t]
+            score = scores[query_idx, t].item()
             if score > heap[0].value:
                 triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t))
                 # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
@@ -359,7 +363,7 @@ class ActiveLearning(object):
                 if triple_tuple not in self.previous_true_set and \
                         triple_tuple not in self.previous_false_set and \
                         triple_tuple not in cur_seen:  # todo find some better way to do so
-                    heapq.heapreplace(heap, HeapNode((score.item(), triple)))
+                    heapq.heapreplace(heap, HeapNode((score, triple)))
                     reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
                     cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
 
