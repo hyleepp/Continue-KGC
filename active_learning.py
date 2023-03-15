@@ -1,6 +1,9 @@
 import logging
 import os
+import random
 import heapq
+import time
+import pickle as pkl
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +16,6 @@ from optimization import Regularizer
 from utils.train import *
 from dataset.KGDataset import KGDataset
 
-import random
 
 
 class ActiveLearning(object):
@@ -288,6 +290,7 @@ class ActiveLearning(object):
             candidate_queries = []
             for node in focus_entities:
                 class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
+                # class_name = None # ! nullify the filter
                 if class_name:
                     candidate_relations = list(self.query_filter.get(class_name))
                     candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
@@ -296,7 +299,7 @@ class ActiveLearning(object):
                 entity_col = torch.ones_like(candidate_relations) * node.item()
                 candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1))
 
-            random.shuffle(candidate_queries)
+            # random.shuffle(candidate_queries)
             candidate_queries = torch.cat(candidate_queries, dim=0)
 
             # TODO also limits the possible tails
@@ -321,6 +324,7 @@ class ActiveLearning(object):
             # 进两步，退一步，这样更加自适应一点点
 
             # todo use a dataloader in here, since randomly we will get abetter threshold for after steps of getting entities
+            progress_and_filte_rate = []
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 while batch_begin < len(candidate_queries):
@@ -337,7 +341,11 @@ class ActiveLearning(object):
                     batch_begin += batch_size
                     # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
                     batch_size = min(2 * batch_size, self.max_batch_for_inference)
+                    progress_and_filte_rate.append((batch_begin, len(passed_pair_idx) / len(queries)))
 
+        with open(f'draw_lines/active_num_ablation/{self.args.active_num}.pkl', 'wb') as f:
+            pkl.dump(time_and_progress, f)
+            raise ValueError # stop here
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
         return heap
@@ -348,7 +356,7 @@ class ActiveLearning(object):
         Args:
             scores (_type_): the scores of all triples, scores[i, j] means the score of i-th query and j-th candidate entity (or t for simplicity)
             queries (_type_): [[h, r]] 
-            pair_idx (_type_): [query_idx, candidate_idx] 
+            pair_idx (_type_): [[query_idx, candidate_idx]] 
             heap (_type_): the heap that scores the most promised triples
         """
         # TODO see if we let this run on cpu and we continue gpu processes
