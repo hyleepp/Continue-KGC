@@ -5,7 +5,7 @@ python main.py \
     --regularizer F2 \
     --setting active_learning \
     --batch_size 1000 \
-    --init_ratio 0.1 \
+    --init_ratio 0.9 \
     --patient 5 \
     --hidden_size 500 \
     --neg_size -1 \

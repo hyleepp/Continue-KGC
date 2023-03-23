@@ -4,6 +4,7 @@ import os
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
 from active_learning import ActiveLearning
+from utils.train import set_environ
 
 # torch.backends.cudnn.enable =True
 # torch.backends.cudnn.benchmark = True

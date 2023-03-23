@@ -267,7 +267,7 @@ class ActiveLearning(object):
 
         return left + 1
 
-    def get_total_candidates(self, ):
+    def get_candidates_queries(self, ):
         focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
         candidate_queries = []
         for node in focus_entities:
@@ -283,7 +283,7 @@ class ActiveLearning(object):
         candidate_queries = torch.cat(candidate_queries, dim=0)
         return candidate_queries
 
-    def get_candidate_for_verification(self, candidate_queries) -> list:
+    def knowledge_mining(self, candidate_queries) -> list:
         """try to give each possible link (or some of them, since we may have a filter function),
         and return the top-k highest candidates for verification in next step. Here we use a heap to help sort. 
 
@@ -293,49 +293,12 @@ class ActiveLearning(object):
 
         self.model.eval()
         with torch.no_grad():
-            # inference while updating?
-            # TODO keep two separate processes, and keep synchronization
-            # 1. get possible nodes (indics)
-            # 1.1 just simply all nodes, save this one as a baseline
-            # focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
-            # [0, 1, 2, ...]
-            # 1.2 get nodes via deviation ||\hat{e} - e||
-            # 1.3 save as a queue or sth like this (merged with 1.2)
 
-            # 2. propose a possible relations
-            # filter, maybe not so meaningful, since the tensor may not be sparse enough
-            # candidate_queries = []
-            # for node in focus_entities:
-            #     class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
-                # class_name = None
-            #     if class_name:
-            #         candidate_relations = list(self.query_filter.get(class_name))
-            #         candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
-            #     else:
-            #         candidate_relations = torch.arange(self.model.n_rel * 2).to(node.device)  # use all relations
-            #     entity_col = torch.ones_like(candidate_relations) * node.item()
-            #     candidate_queries.append(torch.stack((entity_col, candidate_relations), dim=1)) # (num_pairs, 2)
-
-            # random.shuffle(candidate_queries)
-            candidate_queries = torch.cat(candidate_queries, dim=0)
-            # candidate_queries = torch.cat(candidate_queries, dim=0)
-
-            # TODO also limits the possible tails
-
-            # 3. inference and get the scores
             # use a prior queue, this is not algorithm related, so will not be highlighted in paper
             heap = [HeapNode((float("-inf"), None)) for _ in range(self.args.active_num)]
 
-            # batch run
-            # here a batch is set to be 1000 # TODO more flexible
             batch_begin, batch_size = 0, 1
-            # batch_begin, batch_size = 0, self.max_batch_for_inference
 
-            # build triples
-            # the less the active num, the faster this process
-            # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
-
-            progress_and_filter_rate = []
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 while batch_begin < len(candidate_queries):
@@ -352,12 +315,7 @@ class ActiveLearning(object):
                     batch_begin += batch_size
                     # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
                     batch_size = min(2 * batch_size, self.max_batch_for_inference)
-                    progress_and_filter_rate.append((batch_begin, len(passed_pair_idx) / (scores.shape[0] * scores.shape[1])))
-        
-        # used to draw picture, will be dropped
 
-        with open(f'draw_lines/progress_and_filter_rate/{self.ith}.pkl', 'wb') as f:
-            pkl.dump(progress_and_filter_rate, f)
         self.ith += 1
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
@@ -531,10 +489,10 @@ class ActiveLearning(object):
             os.path.join(self.dataset.data_path, self.args.setting, str(self.args.init_ratio))) if self.args.dataset == "FB15K" else None
         logging.info('\t relation filter generated successfully')
 
-        total_candidate = self.get_total_candidates()
+        candidate_quires = self.get_candidates_queries()
         while completion_ratio < self.args.expected_completion_ratio:
-            candidates = self.get_candidate_for_verification()
-            true_count, false_count, completion_ratio = self.verification(candidates)
+            candidates_triples = self.knowledge_mining(candidate_quires)
+            true_count, false_count, completion_ratio = self.verification(candidates_triples)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
             if self.args.update_freq > 0 and step % self.args.update_freq == 0:  # < 0 means never update

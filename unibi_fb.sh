@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=0
 python main.py \
     --dataset FB15K \
     --model UniBi_2 \
@@ -14,7 +14,7 @@ python main.py \
     --incremental_learning_method retrain \
     --active_num 10000 \
     --incremental_learning_epoch 10 \
-    --update_freq 10 \
+    --update_freq -1 \
     --sta_scale 60 \
     --pretrained_model_id logs/03_03/FB15K/UniBi_2_20_01_27 \
     
