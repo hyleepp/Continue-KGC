@@ -4,19 +4,11 @@ import os
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
 from active_learning import ActiveLearning
-import torch
 
 # torch.backends.cudnn.enable =True
 # torch.backends.cudnn.benchmark = True
 
-def set_environ():
-    '''set some environment configs'''
 
-    os.environ['KGHOME'] = "./"
-    os.environ['LOG_DIR'] = "logs"
-    os.environ['DATA_PATH'] = 'data'
-
-    return 
 
 def prepare_parser():
     
