@@ -499,6 +499,7 @@ class ActiveLearning(object):
                 self.incremental_learning(step)
             if step == 500:
                 break
+            step += 1
 
         logging.info(f"\t Completion finished at step {step}.")
 
