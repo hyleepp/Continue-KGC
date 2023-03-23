@@ -18,14 +18,20 @@ def set_environ():
 
     return 
 
-def get_savedir(model_name: str, dataset_name: str) -> str:
+def get_savedir(model_name: str, dataset_name: str, gcn_type: str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
-    save_dir = os.path.join(
-        os.environ["LOG_DIR"], date, dataset_name,
-        model_name + dt.strftime('_%H_%M_%S')
-    )
+    if gcn_type == 'None':
+        save_dir = os.path.join(
+            os.environ["LOG_DIR"], date, dataset_name,
+            model_name + dt.strftime('_%H_%M_%S')
+        )
+    else:
+        save_dir = os.path.join(
+            os.environ["LOG_DIR"], date, dataset_name,
+            model_name + '_' + gcn_type + dt.strftime('_%H_%M_%S')
+        )
 
     os. makedirs(save_dir)
     return save_dir
