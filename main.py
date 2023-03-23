@@ -4,15 +4,7 @@ import os
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
 from active_learning import ActiveLearning
-
-def set_environ():
-    '''set some environment configs'''
-
-    os.environ['KGHOME'] = "./"
-    os.environ['LOG_DIR'] = "logs"
-    os.environ['DATA_PATH'] = 'data'
-
-    return 
+from utils.train import set_environ
 
 def prepare_parser():
     
@@ -46,7 +38,7 @@ def prepare_parser():
         "--dyn_scale", action="store_true", help="whether or not add a learnable factor"
     )
     parser.add_argument(
-        "--init_ratio", type=float, required=True, choices=[0.7, 0.8, 0.9, 0.95, 0.985], help="the initial ratio of the triples"
+        "--init_ratio", type=float, required=True, help="the initial ratio of the triples"
     )
     parser.add_argument(
         "--debug", action="store_true", help='whether or not debug the program'

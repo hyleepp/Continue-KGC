@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from utils import dataset
+import utils as dataset
 from collections import defaultdict
 
  
@@ -282,7 +282,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
 
     if need_query_filter:
         id2class = generate_id2class(data_path)
-        query_filter = generate_query_filter(os.path.join(data_path, 'active_learning', str(init_ratio)), init_triples, id2class, n_rel)
+        query_filter = generate_query_filter(os.path.join(data_path, 'active_learning', str(init_ratio)), init_triples, id2class, n_rel, rec=True)
 
     # transform to writable ones
     init_triples = dataset.triples_to_lines(init_triples)
@@ -402,5 +402,5 @@ if __name__ == "__main__":
     # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
     # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
     # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
-    generate_active_learning_dataset('data/FB15K', 0.8, True)
+    generate_active_learning_dataset('data/FB15K', 0.3, True)
     # merge_wiki('data_raw/wikikg-v2')

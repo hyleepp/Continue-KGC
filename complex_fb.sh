@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=5
 python main.py \
     --dataset FB15K \
     --model ComplEx \
@@ -15,5 +15,6 @@ python main.py \
     --active_num 10000 \
     --incremental_learning_epoch 20 \
     --update_freq -1 \
+    --pretrained_model_id logs/03_09/FB15K/ComplEx_14_34_26
     # --pretrained_model_id logs/02_16/FB15K/RESCAL_16_59_19 \
     

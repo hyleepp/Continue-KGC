@@ -29,6 +29,7 @@ class ActiveLearning(object):
 
         # in  phase 1 of pretrain, it will be changed to the real best epoch, which is used in phase 2 of pretrain
         self.best_epoch = args.max_epochs
+        self.ith = 0 # ! remove after drawing
 
         # Data Loading
         # TODO use dataloader
@@ -290,7 +291,7 @@ class ActiveLearning(object):
             candidate_queries = []
             for node in focus_entities:
                 class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
-                # class_name = None # ! nullify the filter
+                # class_name = None
                 if class_name:
                     candidate_relations = list(self.query_filter.get(class_name))
                     candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
@@ -314,17 +315,10 @@ class ActiveLearning(object):
             # batch_begin, batch_size = 0, self.max_batch_for_inference
 
             # build triples
-            # simply loop # TODO -> a little bit parallel
             # the less the active num, the faster this process
             # TODO 完全异步维护数据，全是gpu单向向cpu输入数据，然后cpu维护一个堆，最后两者结束同步就ok了
 
-            # try to achieve the maximum capacity in the following progress
-
-            # todo 在这里变成一种二分的模式, right 就是max，然后初始化为1000000，left就是cur，然后不断削减right的上限
-            # 进两步，退一步，这样更加自适应一点点
-
-            # todo use a dataloader in here, since randomly we will get abetter threshold for after steps of getting entities
-            progress_and_filte_rate = []
+            progress_and_filter_rate = []
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 while batch_begin < len(candidate_queries):
@@ -341,11 +335,13 @@ class ActiveLearning(object):
                     batch_begin += batch_size
                     # initially give a mini batch to set a filter bar and gradually grow to active_num, if we initially use a huge batch, the first loop will be very slow. this can be treated as a warm up
                     batch_size = min(2 * batch_size, self.max_batch_for_inference)
-                    progress_and_filte_rate.append((batch_begin, len(passed_pair_idx) / len(queries)))
+                    progress_and_filter_rate.append((batch_begin, len(passed_pair_idx) / (scores.shape[0] * scores.shape[1])))
+        
+        # used to draw picture, will be dropped
 
-        with open(f'draw_lines/active_num_ablation/{self.args.active_num}.pkl', 'wb') as f:
-            pkl.dump(time_and_progress, f)
-            raise ValueError # stop here
+        with open(f'draw_lines/progress_and_filter_rate/{self.ith}.pkl', 'wb') as f:
+            pkl.dump(progress_and_filter_rate, f)
+        self.ith += 1
         assert heap[-1].value != float("-inf"), "we meet some problems"
 
         return heap
@@ -424,6 +420,7 @@ class ActiveLearning(object):
         # update completion ratio
         completion_ratio = (len(self.previous_true_set)) / \
             (len(self.init_triples) + len(self.unexplored_triples))
+        
 
         return true_count, false_count, completion_ratio
 
@@ -519,7 +516,12 @@ class ActiveLearning(object):
 
         while completion_ratio < self.args.expected_completion_ratio:
             step += 1
+            start_time = time.time()
             candidates = self.get_candidate_for_verification()
+            end_time = time.time()
+            time_diff = end_time - start_time
+            with open('draw_lines/time_per_step/data.txt', 'a+') as f:
+                f.write(str(time_diff) + ' ')
             true_count, false_count, completion_ratio = self.verification(candidates)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
