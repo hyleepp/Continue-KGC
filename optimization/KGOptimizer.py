@@ -51,7 +51,6 @@ class KGOptimizer(nn.Module):
 
     def calculate_loss(self, triples):
         '''Calculate the loss of the given triples'''
-        
         if self.neg_size == -1:
             loss, reg_factor = self.no_neg_sample_loss(triples)
         else:
@@ -82,14 +81,12 @@ class KGOptimizer(nn.Module):
         return loss, reg_factor
     
     def no_neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
-        '''The loss caluctae without negative sample, like CE'''
-
-        predictions, reg_factor = self.model(triples, eval_mode=True)
+        '''The loss calculate without negative sample, like CE'''
+        predictions, reg_factor = self.model(triples, eval_mode=True) # !!
         truth = triples[:, 2]
         predictions *= self.sta_scale # temperature
 
         loss = self.loss_fn(predictions, truth) # TODO add other losses
-
         return loss, reg_factor
     
     def pretraining_epoch(self, triples, mode) -> Tensor:
@@ -175,7 +172,6 @@ class KGOptimizer(nn.Module):
         while b_begin < triples.shape[0]:
             # get input batch
             input_batch = triples[b_begin: b_begin + self.batch_size].cuda()
-
             # forward and backward (for train)
             if mode == 'train':
                 loss = self.calculate_loss(input_batch)

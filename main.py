@@ -4,7 +4,19 @@ import os
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
 from active_learning import ActiveLearning
-from utils.train import set_environ
+import torch
+
+# torch.backends.cudnn.enable =True
+# torch.backends.cudnn.benchmark = True
+
+def set_environ():
+    '''set some environment configs'''
+
+    os.environ['KGHOME'] = "./"
+    os.environ['LOG_DIR'] = "logs"
+    os.environ['DATA_PATH'] = 'data'
+
+    return 
 
 def prepare_parser():
     
@@ -111,6 +123,10 @@ def prepare_parser():
         "--diff_weight", type=float, default=1e-3, help="the weight on the difference between new embedding and cur embedding"
     )
 
+    '''GCN config'''
+    parser.add_argument("--gcn_type", type=str, default="None")
+    parser.add_argument("--gcn_base", type=int, default=4)
+    parser.add_argument("--gcn_dropout", type=float, default=0.2)
     return parser.parse_args()
 
 
