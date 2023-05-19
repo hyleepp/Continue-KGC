@@ -51,7 +51,6 @@ class KGOptimizer(nn.Module):
 
     def calculate_loss(self, triples):
         '''Calculate the loss of the given triples'''
-        
         if self.neg_size == -1:
             loss, reg_factor = self.no_neg_sample_loss(triples)
         else:
@@ -82,14 +81,12 @@ class KGOptimizer(nn.Module):
         return loss, reg_factor
     
     def no_neg_sample_loss(self, triples) -> Tuple[Tensor, Tensor]:
-        '''The loss caluctae without negative sample, like CE'''
-
-        predictions, reg_factor = self.model(triples, eval_mode=True)
+        '''The loss calculate without negative sample, like CE'''
+        predictions, reg_factor = self.model(triples, eval_mode=True) # !!
         truth = triples[:, 2]
         predictions *= self.sta_scale # temperature
 
         loss = self.loss_fn(predictions, truth) # TODO add other losses
-
         return loss, reg_factor
     
     def pretraining_epoch(self, triples, mode) -> Tensor:
@@ -122,7 +119,7 @@ class KGOptimizer(nn.Module):
             previous_false (_type_): previous false triples
             cur_true (_type_): current true triples, if None means no new true
             cur_false (_type_): current false triples, if None means no new false
-            method (_type_): the incremental learning method
+            method (_type_): the incremental learning method, retrain: previous + cur, finetune: cur, reset: renew a model and train from scratch
             args (_type_): other args may used
         """
 
@@ -131,35 +128,42 @@ class KGOptimizer(nn.Module):
         
         if method == 'retrain': 
             triples = torch.cat((previous_true, cur_true), 0) if cur_true is not None else previous_true # may do not have new true triples
+            pre_emb_ent = self.model.emb_ent.weight.clone().detach()
         elif method == 'finetune':
             triples = cur_true
+            pre_emb_ent = self.model.emb_ent.weight.clone().detach()
+        elif method == 'reset':
+            pre_emb_ent = None
         else:
             raise ValueError
 
-        triples = triples[torch.randperm(triples.shape[0]), :]
         
         if len(triples) == 0:
             return float('nan') # if there is not new triples, then do not need to calculate loss
         
+        triples = triples[torch.randperm(triples.shape[0]), :]
+
         with tqdm(total=triples.shape[0], unit='ex', disable=not self.verbose) as bar:
             bar.set_description(f"Incremental training {method} loss")
-            loss = self.epoch(triples, bar, mode='train')
+            loss = self.epoch(triples, bar, mode='train', pre_emb_ent=pre_emb_ent)
         
         return loss
 
-    def epoch(self, triples, bar, mode: str) -> Tensor:
+    def epoch(self, triples, bar, mode: str, pre_emb_ent=None) -> Tensor:
         """the running core of an optimizer 
 
         Args:
             triples (Tensor): training triples in shape (N_train x 3)
             bar: the tqdm handler of a progress bar
             mode (str): on train or valid 
+            pre_emb_ent: the embedding of entities before optimization, used to restrict the model not change too much.
+                And we only add reg on ent, because different models have different ways to handle rel, and it is hard to unify by a simple L2
 
         Returns:
             total_loss: avg loss of the given batch
         """
 
-        # TODO change the arguments, replaced with previous_true, prevoius_false, cur_true, cur_false
+        # TODO change the arguments, replaced with true, false
 
         b_begin = 0
         total_loss = 0
@@ -168,10 +172,11 @@ class KGOptimizer(nn.Module):
         while b_begin < triples.shape[0]:
             # get input batch
             input_batch = triples[b_begin: b_begin + self.batch_size].cuda()
-
             # forward and backward (for train)
             if mode == 'train':
                 loss = self.calculate_loss(input_batch)
+                if pre_emb_ent is not None:
+                    loss += torch.sum(torch.pow(self.model.emb_ent.weight - pre_emb_ent, 2)) # only used in incremental learning
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()

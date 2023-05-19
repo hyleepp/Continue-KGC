@@ -46,7 +46,6 @@ pos_tags = nltk.pos_tag(tokens)
 # nltk.download('punkt')
 # nltk.download('averaged_perceptron_tagger')
 # nltk.download('wordnet')
-# 1. 读取context文件
 
 
 def load_data(path):
@@ -74,7 +73,6 @@ def load_data(path):
     with open(os.path.join(path, "entity_type.json"), 'r') as f:
         qid2class = json.load(f)
     for k, v in entity2wiki.items():
-        # 可能存在none的情况，需要特殊处理，占比也不多
         des = v['description'] if v['description'] else ''
         wiki_id = v['wikidata_id']
         class_name = qid2class[wiki_id]['parent_entity_name']
@@ -84,7 +82,7 @@ def load_data(path):
     
     return idx2class, class_names 
 
-# 2. 获得embedding
+# 2. attaining embedding
 
 
 def mean_podding(model_output, attention_mask):
@@ -118,12 +116,12 @@ def get_embedding(model, tokenizer, sentences):
 
     return sentences_embeddings
 
-# 3. 聚类，考虑根据纯text信息或者用个bert啥的
+# 3. clustering, considering textual information 
 
 
 def tsne_visualize(sentence_embeddings, freq=None, labels=None):
     # distance_matrix = pairwise_distances(sentence_embeddings, sentence_embeddings, metric='cosine', n_jobs=-1)
-    palette = 'hsv'  # 调色板名称
+    palette = 'hsv'  
     cmap = plt.get_cmap(palette)
     reducted_embeddings = TSNE(
         n_components=2, learning_rate='auto', init='random', n_iter=1000, metric='cosine').fit_transform(sentence_embeddings)
@@ -169,7 +167,7 @@ if __name__ == "__main__":
     idx2description, descriptions = load_data(path)
 
     # filters
-    # 尝试只保留第一个名词
+    # try to only reserve the first noun
     # filted = []
     # for description in descriptions:
     #     if not description:
@@ -218,7 +216,7 @@ if __name__ == "__main__":
     init_filter = generate_relation_filter(init_triples, idx2description, 1345)
     all_filter = generate_relation_filter(init_triples + unexplored_triples, idx2description, 1345)
     
-    # 统计一下init_filter可以cover多少
+    # count how much init_filter can cover
     count = 0
     for triple in unexplored_triples:
         h, r, t = triple

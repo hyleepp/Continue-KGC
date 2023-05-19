@@ -4,6 +4,10 @@ import os
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
 from active_learning import ActiveLearning
+import torch
+
+# torch.backends.cudnn.enable =True
+# torch.backends.cudnn.benchmark = True
 
 def set_environ():
     '''set some environment configs'''
@@ -46,7 +50,7 @@ def prepare_parser():
         "--dyn_scale", action="store_true", help="whether or not add a learnable factor"
     )
     parser.add_argument(
-        "--init_ratio", type=float, required=True, choices=[0.7, 0.8, 0.9, 0.95, 0.985], help="the initial ratio of the triples"
+        "--init_ratio", type=float, required=True, help="the initial ratio of the triples"
     )
     parser.add_argument(
         "--debug", action="store_true", help='whether or not debug the program'
@@ -92,7 +96,7 @@ def prepare_parser():
 
     '''Incremental Part''' 
     parser.add_argument(
-        "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune'], help="the specific method used in incremental learning"
+        "--incremental_learning_method", type=str, required=True, choices=['retrain', 'finetune', 'reset'], help="the specific method used in incremental learning"
     )
     parser.add_argument(
         "--incremental_learning_epoch", type=int, default=10, help="the epoch of incremental learning"
@@ -101,10 +105,13 @@ def prepare_parser():
         "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
     )
     parser.add_argument(
-        "--active_num", type=int, default=1000, help= "how many active labels for each epoch"
+        "--active_num", type=int, default=1000, help="how many active labels for each epoch"
     )
     parser.add_argument(
-        "--expected_completion_ratio", type=float, default=0.99, help= "when the completion can be treated as almost done"
+        "--expected_completion_ratio", type=float, default=0.999, help="when the completion can be treated as almost done"
+    )
+    parser.add_argument(
+        "--max_completion_step", type=int, default=200, help="max step for model to execute completing"
     )
     parser.add_argument(
         "--setting", type=str, required=True, choices=['active_learning'], help='which setting in KG'
@@ -115,7 +122,14 @@ def prepare_parser():
     parser.add_argument(
         "--max_batch_for_inference", type=int, default=15000, help="the max batch when trying to get candidates"
     )
+    parser.add_argument(
+        "--diff_weight", type=float, default=1e-3, help="the weight on the difference between new embedding and cur embedding"
+    )
 
+    '''GCN config'''
+    parser.add_argument("--gcn_type", type=str, default="None")
+    parser.add_argument("--gcn_base", type=int, default=4)
+    parser.add_argument("--gcn_dropout", type=float, default=0.2)
     return parser.parse_args()
 
 

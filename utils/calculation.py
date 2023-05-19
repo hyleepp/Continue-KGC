@@ -1,7 +1,11 @@
 '''some base calculations'''
 
 import torch
+import math
 from torch import Tensor 
+import torch.nn.functional as F
+from torch_scatter import scatter_add
+        
 
 def euc_distance(x: Tensor, y: Tensor, eval_mode=False) -> Tensor:
     """calculate eucidean distance
@@ -28,7 +32,6 @@ def euc_distance(x: Tensor, y: Tensor, eval_mode=False) -> Tensor:
     return x2 + y2 - 2 * xy
 
 
-
 def givens_rotation(r, x, transpose=False):
     """Givens rotations.
 
@@ -48,3 +51,67 @@ def givens_rotation(r, x, transpose=False):
     else:
         x_rot = givens[:, :, 0:1] * x + givens[:, :, 1:] * torch.cat((-x[:, :, 1:], x[:, :, 0:1]), dim=-1)
     return x_rot.view((r.shape[0], -1))
+
+
+def quaternion_rotation(rotation, x, right = False, transpose = False):
+    """rotate a batch of quaterions with by orthogonal rotation matrices
+
+    Args:
+        rotation (torch.Tensor): parameters that used to rotate other vectors [batch_size, rank]
+        x (torch.Tensor): vectors that need to be rotated [batch_size, rank]
+        right (bool): whether to rotate left or right
+        transpose (bool): whether to transpose the rotation matrix
+
+    Returns:
+        rotated_vectors(torch.Tensor): rotated_results [batch_size, rank]
+    """
+    # ! it seems like calculate in this way will slow down the speed
+    # turn to quaterion
+    rotation = rotation.view(rotation.shape[0], -1, 4)
+    rotation = rotation / torch.norm(rotation, dim=-1, keepdim=True).clamp_min(1e-15)  # unify each quaterion of the rotation part
+    p, q, r, s = rotation[:, :, 0], rotation[:, :, 1], rotation[:, :, 2], rotation[:, :, 3]
+    if transpose:
+        q, r, s = -q, -r ,-s # the transpose of this quaterion rotation matrix can be achieved by negating the q, r, s
+    s_a, x_a, y_a, z_a = x.chunk(dim=1, chunks=4)
+    
+    if right:
+        # right rotation
+        # the original version used in QuatE is actually the right rotation
+        rotated_s = s_a * p - x_a * q - y_a * r - z_a * s
+        rotated_x = s_a * q + p * x_a + y_a * s - r * z_a
+        rotated_y = s_a * r + p * y_a + z_a * q - s * x_a
+        rotated_z = s_a * s + p * z_a + x_a * r - q * y_a
+    else:
+        # left rotation
+        rotated_s = s_a * p - x_a * q - y_a * r - z_a * s
+        rotated_x = s_a * q + x_a * p - y_a * s + z_a * r
+        rotated_y = s_a * r + x_a * s + y_a * p - z_a * q 
+        rotated_z = s_a * s - x_a * r + y_a * q + z_a * p 
+
+    rotated_vectors = torch.cat([rotated_s, rotated_x, rotated_y, rotated_z], dim=-1)
+
+    return rotated_vectors
+    
+
+def uniform(size, tensor):
+    bound = 1.0 / math.sqrt(size)
+    if tensor is not None:
+        tensor.data.uniform_(-bound, bound)
+
+
+def edge_normalization(edge_type, edge_index, num_entity, num_relation):
+    '''
+        Edge normalization trick
+        - one_hot: (num_edge, num_relation)
+        - deg: (num_node, num_relation)
+        - index: (num_edge)
+        - deg[edge_index[0]]: (num_edge, num_relation)
+        - edge_norm: (num_edge)
+    '''
+    one_hot = F.one_hot(edge_type, num_classes = 2 * num_relation).to(torch.float)
+    ## statistics number of edges which connect to one entity, deg[i][j] = k means node i is connected by relation j k times.
+    deg = scatter_add(one_hot, edge_index[0], dim = 0, dim_size = num_entity)
+    index = edge_type + torch.arange(len(edge_index[0])).to(edge_type.device) * (2 * num_relation)
+    edge_norm = 1 / deg[edge_index[0]].view(-1)[index]
+
+    return edge_norm

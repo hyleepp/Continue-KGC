@@ -6,12 +6,17 @@ import torch
 import torch.nn as nn
 from torch import Tensor 
 import torch.nn.functional as F
+import pickle
+from copy import deepcopy
+import sys
 
 from .KGModel import KGModel
-from utils.calculation import euc_distance, givens_rotation
+from .GNNModel import RGCN
+from utils.calculation import euc_distance, givens_rotation, quaternion_rotation, edge_normalization
 
-DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE']
+DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE', 'QuatE', 'CP']
 BILINEAR_MODELS = ['RESCAL', 'ComplEx', "UniBi_2"]
+GCN_MODELS = ['RGCN', ]
 EPSILON = 1e-15
 
 class DBModel(KGModel):
@@ -19,18 +24,31 @@ class DBModel(KGModel):
     def __init__(self, args) -> None:
 
         super().__init__(args)
-
+        self.args = args
         self.similarity_method = 'dist' # or dot 
-
+        if args.gcn_type != "None":
+            self.encoder = RGCN(args.n_ent, args.n_rel, args.gcn_base, args.hidden_size, args.gcn_dropout)
         return
     
-    def encode(self, triples: Tensor) -> Tensor:
-
+    def encode(self, triples: Tensor):
+        # triples: (bs, 3)
         # we do not need this part, it is used in GNN based models
+        if self.args.gcn_type != 'None':
+            src, rel, dst = triples.t()
+            unique_entity, edge_idx = torch.unique(torch.cat((src, dst)), return_inverse=True)
+            src, dst = edge_idx.view(2, -1)
+            edge_index = torch.stack((src, dst)) # edge_index represents the index of entity src, dst in specific entities of this batch
+            edge_type = rel
+            edge_norm = edge_normalization(edge_type, edge_index, len(unique_entity), self.n_rel)
+            x = self.encoder(self.emb_ent(unique_entity), edge_index, edge_type, edge_norm)
+            new_emb = self.emb_ent.weight.clone()
+            new_emb[unique_entity] = x
+            return new_emb, self.emb_rel.weight
+
         return self.emb_ent.weight, self.emb_rel.weight # here we need tensor, rather than Embedding
 
-    def score(self, v_queries, v_candidates, eval_mode=False, require_grad=True) -> Tensor:
 
+    def score(self, v_queries, v_candidates, eval_mode=False, require_grad=True) -> Tensor:
         # TODO continue here
         if self.similarity_method == 'dist':
             score = - euc_distance(v_queries, v_candidates, eval_mode)
@@ -49,6 +67,8 @@ class TransE(DBModel):
     
     def __init__(self, args) -> None:
         super().__init__(args)
+        self.similarity_method = 'dist'
+        self.args = args
 
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
 
@@ -70,16 +90,28 @@ class RotatE(DBModel):
         hr = givens_rotation(r, h)
 
         return hr
+
+class CP(DBModel):
+
+    def __init__(self, args) -> None:
+        super().__init__(args)
+        self.similarity_method = 'dot'
+    
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        h = enc_e[triples[:, 0]]
+        r = enc_e[triples[:, 1]]
+        return h * r
     
 class ComplEx(DBModel):
 
     def __init__(self, args) -> None:
         super().__init__(args)
+        self.args = args
 
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
         h = enc_e[triples[:, 0]]
-        h_r, h_i = h[:, self.hidden_size // 2:], h[:, :self.hidden_size // 2]
         r = enc_r[triples[:, 1]]
+        h_r, h_i = h[:, self.hidden_size // 2:], h[:, :self.hidden_size // 2]
         r_r, r_i = r[:, self.hidden_size // 2:], r[:, :self.hidden_size // 2]
         lhs_e = torch.cat([
             h_r * r_r - h_i * r_i,
@@ -106,15 +138,66 @@ class ComplEx(DBModel):
         h_r, h_i = h[:, self.hidden_size // 2:], h[:, :self.hidden_size // 2]
         r = enc_r[triples[:, 1]]
         r_r, r_i = r[:, self.hidden_size // 2:], r[:, :self.hidden_size // 2]
-        t = enc_e[triples[:, 0]]
+        t = enc_e[triples[:, 2]]
         t_r, t_i = t[:, self.hidden_size // 2:], t[:, :self.hidden_size // 2]
 
-        head_f = torch.sqrt(h_r[0] ** 2 + h_i[1] ** 2 + EPSILON)
-        rel_f = torch.sqrt(r_r[0] ** 2 + r_i[1] ** 2 + EPSILON)
-        tail_f = torch.sqrt(t_r[0] ** 2 + t_i[1] ** 2 + EPSILON)
+        head_f = torch.sqrt(h_r ** 2 + h_i ** 2 + EPSILON)
+        rel_f = torch.sqrt(r_r ** 2 + r_i ** 2 + EPSILON)
+        tail_f = torch.sqrt(t_r ** 2 + t_i ** 2 + EPSILON)
 
         return head_f, rel_f, tail_f
 
+class QuatE(DBModel):
+    def __init__(self, args) -> None:
+        super().__init__(args)
+        self.args = args
+
+    def get_queries(self, triples, enc_e, enc_r) -> Tensor:
+        h = enc_e[triples[:, 0]]
+        r = enc_r[triples[:, 1]]
+        # p, q, u, v = r.chunk(dim=1, chunks=4)
+        # s_a, x_a, y_a, z_a = h.chunk(dim=1, chunks=4)
+        # denominator = torch.sqrt(p ** 2 + q ** 2 + u ** 2 + v ** 2)
+        # p, q, u, v = p / denominator, q / denominator, u / denominator, v / denominator
+        # _a = s_a * p - x_a * q - y_a * u - z_a * v
+        # _b = s_a * q + p * x_a + y_a * v - u * z_a
+        # _c = s_a * u + p * y_a + z_a * q - v * x_a
+        # _d = s_a * v + p * z_a + x_a * u - q * y_a
+
+        # lhs_e = torch.cat([_a, _b, _c, _d], dim=1)
+        lhs_e = quaternion_rotation(r, h, right=True)
+        return lhs_e
+
+    def get_candidates(self, triples, enc_e, eval_mode) -> Tensor:
+        """give the tail entities for corresponding triples
+
+        Args:
+            enc_e (_type_): embedding of all entities after encoding
+            eval_mode (_type_): return the corresponding embeddings (BS x 1) or the embeddings of all candidate entities (N_ent x 1)
+
+        Returns:
+            Tensor: the embedding of tail or all entities
+        """
+
+        # TODO filter out the entities that do not envolved, which is essential for continue activate learning
+        if not eval_mode:
+            return enc_e[triples[:, 2]]
+        else:
+            return enc_e # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
+    
+    def score(self, lhs_e, rhs_e, eval_mode=False, require_grad=True):
+        a, b, c, d = lhs_e.chunk(dim=1, chunks=4)
+        s_c, x_c, y_c, z_c = rhs_e.chunk(dim=1, chunks=4)
+
+        if eval_mode:
+            return sum([a.mm(s_c.transpose(0, 1)), b.mm(x_c.transpose(0, 1)), c.mm(y_c.transpose(0, 1)), d.mm(z_c.transpose(0, 1))])
+        else:
+            return torch.sum(a * s_c + b * x_c + c * y_c + d * z_c, dim=1, keepdim=True) # (BS, 1)
+
+    def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
+        h, r, t = enc_e[triples[:, 0]], enc_r[triples[:, 1]], enc_e[triples[:, 2]]
+        return h, r, t
+            
 class RESCAL(DBModel):
 
     def __init__(self, args) -> None:
@@ -143,7 +226,7 @@ class UniBi_2(DBModel):
         
         return
     
-    def encode(self, triples: Tensor) -> Tensor:
+    def encode(self, triples: Tensor):
         return self.emb_ent.weight, (self.Rot_u.weight, self.emb_rel.weight, self.Rot_v.weight)
 
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
@@ -172,7 +255,6 @@ class UniBi_2(DBModel):
             return F.normalize(enc_e[triples[:, 2]], p=2, dim=1)
         else:
             return F.normalize(enc_e, p=2, dim=1) # N_ent does not match BS, but this is not a problem, since these two kinds of setting are handled differently
-
     
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         t = enc_e[triples[:, 2]]
@@ -180,8 +262,6 @@ class UniBi_2(DBModel):
         self.reg.append(t)
         return self.reg
 
-        
-    
     
 class RotE(DBModel):
     '''rotate + trans'''
@@ -196,7 +276,7 @@ class RotE(DBModel):
 
         return
     
-    def encode(self, triples: Tensor) -> Tensor:
+    def encode(self, triples: Tensor):
         return (self.emb_ent.weight, self.bias.weight), (self.emb_rel.weight, self.emb_trans.weight) # here we need tensor, rather than Embedding
     
     def get_queries(self, triples, enc_e, enc_r) -> Tensor:
@@ -223,15 +303,9 @@ class RotE(DBModel):
         v_q, bias_q = v_queries
         v_c, bias_c = v_candidates
 
-        # TODO continue here
         score = - euc_distance(v_q, v_c, eval_mode) + bias_q + (bias_c.t() if eval_mode else bias_c)
         
         return score
     
     def get_reg_factor(self, triples: Tensor, enc_e, enc_r) -> Tensor:
         return enc_e[0][triples[:, 0]], enc_e[1][triples[:, 1]], enc_r[0][triples[:, 1]], enc_r[1][triples[:, 1]], enc_e[0][triples[:, 2]], enc_e[1][triples[:, 2]],  # enc_r = trans + rot
-    
-            
-
-
-        

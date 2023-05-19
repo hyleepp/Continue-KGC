@@ -9,15 +9,29 @@ import pickle as pkl
 
 DOTS = '********'
 
+def set_environ():
+    '''set some environment configs'''
 
-def get_savedir(model_name: str, dataset_name: str) -> str:
+    os.environ['KGHOME'] = "./"
+    os.environ['LOG_DIR'] = "logs"
+    os.environ['DATA_PATH'] = 'data'
+
+    return 
+
+def get_savedir(model_name: str, dataset_name: str, gcn_type: str, regularizer: str, reg_weight: float, incremental_learning_method: str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
-    save_dir = os.path.join(
-        os.environ["LOG_DIR"], date, dataset_name,
-        model_name + dt.strftime('_%H_%M_%S')
-    )
+    if gcn_type == 'None':
+        save_dir = os.path.join(
+            os.environ["LOG_DIR"], date, dataset_name,
+            model_name + '_' + regularizer + '_' + str(reg_weight) + '_' + incremental_learning_method
+        )
+    else:
+        save_dir = os.path.join(
+            os.environ["LOG_DIR"], date, dataset_name,
+            model_name + '_' + gcn_type + dt.strftime('_%H_%M_%S')
+        )
 
     os. makedirs(save_dir)
     return save_dir
@@ -116,11 +130,11 @@ def load_id2class(path: str) -> dict:
     return idx2class
 
 
-def show_the_cover_rate(unexplored_triples: list, init_filter: dict, idx2class: dict, n_rel: int) -> None:
+def show_the_cover_rate(unexplored_triples: Tensor, init_filter: dict, idx2class: dict, n_rel: int) -> None:
     """show the cover rate of init filter on unexplored triples
 
     Args:
-        unexplored_triples (list): [h, r, t]
+        unexplored_triples (Tensor): [h, r, t]
         init_filter (dict): {class: [r1, r2....]}
         idx2class (dict): {1: 'human'}
         n_rel (int): the number of relations 
@@ -131,6 +145,7 @@ def show_the_cover_rate(unexplored_triples: list, init_filter: dict, idx2class: 
 
     for triple in unexplored_triples:
         h, r, t = triple
+        h, r, t = h.item(), r.item(), t.item()
         h_class, t_class = idx2class.get(h), idx2class.get(t)
         if h_class and t_class:
             if r in init_filter[h_class] or r + n_rel in init_filter[t_class]:

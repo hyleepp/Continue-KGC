@@ -1,4 +1,4 @@
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=5
 python main.py \
     --dataset FB15K \
     --model ComplEx \
@@ -9,11 +9,12 @@ python main.py \
     --patient 5 \
     --hidden_size 500 \
     --neg_size -1 \
+    --max_completion_step 200 \
     --max_epochs 100 \
-    --reg_weight 0.005\
+    --reg_weight 0.001\
     --incremental_learning_method retrain \
     --active_num 10000 \
     --incremental_learning_epoch 20 \
     --update_freq -1 \
-    # --pretrained_model_id logs/02_16/FB15K/RESCAL_16_59_19 \
+    # --pretrained_model_id logs/03_09/FB15K/ComplEx_14_34_26
     
