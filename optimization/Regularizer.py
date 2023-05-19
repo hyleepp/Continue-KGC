@@ -61,7 +61,7 @@ class DURA_W(Regularizer):
     def forward(self, factors: Tuple[torch.Tensor]):
         norm = 0
         h, r, t = factors
-        norm += 0.5 *torch.sum(t**2 + h**2)
+        norm += 0.5 * torch.sum(t**2 + h**2)
         norm += 1.5 * torch.sum(h**2 * r**2 +  t**2 *  r**2)
         return self.weight * norm / h.shape[0]
 
@@ -84,6 +84,7 @@ class DURA_UniBi_2(Regularizer):
         )
 
         return self.weight * norm / h.shape[0]
+
 
 class DURA_QuatE(Regularizer):
     def __init__(self, weight: float):

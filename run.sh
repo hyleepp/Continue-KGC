@@ -9,6 +9,7 @@ python main.py \
     --patient 5 \
     --hidden_size 500 \
     --neg_size -1 \
+    --max_completion_step 200 \
     --max_epochs 100 \
     --reg_weight 0.005\
     --incremental_learning_method retrain \

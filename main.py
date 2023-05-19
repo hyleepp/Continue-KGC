@@ -105,10 +105,13 @@ def prepare_parser():
         "--incremental_learning_rate", type=float, default=1e-3, help='learning rate for incremental learning'
     )
     parser.add_argument(
-        "--active_num", type=int, default=1000, help= "how many active labels for each epoch"
+        "--active_num", type=int, default=1000, help="how many active labels for each epoch"
     )
     parser.add_argument(
-        "--expected_completion_ratio", type=float, default=0.99, help= "when the completion can be treated as almost done"
+        "--expected_completion_ratio", type=float, default=0.999, help="when the completion can be treated as almost done"
+    )
+    parser.add_argument(
+        "--max_completion_step", type=int, default=200, help="max step for model to execute completing"
     )
     parser.add_argument(
         "--setting", type=str, required=True, choices=['active_learning'], help='which setting in KG'
