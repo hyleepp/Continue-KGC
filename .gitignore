@@ -1,5 +1,6 @@
 # python
 *.pyc
+*.pdf
 data_raw/
 logs/
 data/
