@@ -14,7 +14,7 @@ from .KGModel import KGModel
 from .GNNModel import RGCN
 from utils.calculation import euc_distance, givens_rotation, quaternion_rotation, edge_normalization
 
-DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE', 'QuatE']
+DISTANCE_MODELS = ['TransE', 'RotatE', 'RotE', 'QuatE', 'CP']
 BILINEAR_MODELS = ['RESCAL', 'ComplEx', "UniBi_2"]
 GCN_MODELS = ['RGCN', ]
 EPSILON = 1e-15

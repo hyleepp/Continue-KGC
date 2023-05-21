@@ -75,7 +75,7 @@ class ActiveLearning(object):
             model, dataset, optimizer
         """
 
-        save_dir = get_savedir(args.model, args.dataset, args.gcn_type)
+        save_dir = get_savedir(args.model, args.dataset, args.gcn_type, args.regularizer, args.reg_weight, args.incremental_learning_method)
         args.save_dir = save_dir  # which will be used further
 
         prepare_logger(save_dir)
@@ -271,7 +271,7 @@ class ActiveLearning(object):
         focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
         candidate_queries = []
         for node in focus_entities:
-            class_name = self.id2class.get(node.item()) # the class of this entity, like trump -> human
+            class_name = self.id2class.get(node.item()) if self.args.dataset == 'FB15k' else None # the class of this entity, like trump -> human
             if class_name:
                 candidate_relations = list(self.query_filter.get(class_name))
                 candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
@@ -471,7 +471,7 @@ class ActiveLearning(object):
         # TODO add different inference method, i.e. may only inference a few, since it is also hard to update all these kind of things
         logging.info(f"\t Start incremental learning at step {step}")
 
-        new_true = torch.stack(self.new_true_list) if self.new_true_list else None
+        new_true = torch.stack(self.new_true_list) if self.new_true_list else None # new triples after certain epochs mining and verifying
         new_false = torch.stack(self.new_false_list) if self.new_false_list else None
 
         # reset list
@@ -536,18 +536,13 @@ class ActiveLearning(object):
 
         candidate_quires = self.get_candidates_queries()
         while completion_ratio < self.args.expected_completion_ratio:
-            start_time = time.time()
-            candidates_triples = self.knowledge_mining(candidate_quires)
-            end_time = time.time()
-            time_diff = end_time - start_time
-            with open('draw_lines/time_per_step/data2.txt', 'a+') as f:
-                f.write(str(time_diff) + ' ')
-            true_count, false_count, completion_ratio = self.verification(candidates_triples)
+            candidates = self.get_candidate_for_verification(total_candidate)
+            true_count, false_count, completion_ratio = self.verification(candidates)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
             if self.args.update_freq > 0 and (step + 1) % self.args.update_freq == 0:  # < 0 means never update
                 self.incremental_learning(step)
-            if step == 500:
+            if step > self.args.max_completion_step:
                 break
             step += 1
 

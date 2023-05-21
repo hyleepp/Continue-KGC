@@ -18,14 +18,14 @@ def set_environ():
 
     return 
 
-def get_savedir(model_name: str, dataset_name: str, gcn_type: str) -> str:
+def get_savedir(model_name: str, dataset_name: str, gcn_type: str, regularizer: str, reg_weight: float, incremental_learning_method: str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
     if gcn_type == 'None':
         save_dir = os.path.join(
             os.environ["LOG_DIR"], date, dataset_name,
-            model_name + dt.strftime('_%H_%M_%S')
+            model_name + '_' + regularizer + '_' + str(reg_weight) + '_' + incremental_learning_method
         )
     else:
         save_dir = os.path.join(

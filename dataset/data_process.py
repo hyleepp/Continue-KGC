@@ -241,7 +241,7 @@ def generate_active_learning_dataset(data_path, init_ratio=0.7, need_query_filte
         triples = f.readlines()
     
     # split the triples 
-    triples = [triple.strip().split() for triple in triples]
+    triples = [triple.strip().split() for triple in triples] # (num_triples, 3)
     shuffle(triples)
 
     # generate the scaffold, i.e., ensure every entities appear in init_shape
@@ -399,8 +399,4 @@ def generate_query_filter(path:str, triples:list, id2class: dict, n_rel: int, re
 
 
 if __name__ == "__main__":
-    # merge_fb('/home/ljy/continue-completing-cycle/data/FB15K') 
-    # merge_files('/home/ljy/continue-completing-cycle/data_raw/WN18/original')
-    # switch_rel_and_tail('/home/ljy/continue-completing-cycle/data/WN18', 'total.txt')
     generate_active_learning_dataset('data/FB15K', 0.3, True)
-    # merge_wiki('data_raw/wikikg-v2')
