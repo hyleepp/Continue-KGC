@@ -126,14 +126,12 @@ class KGOptimizer(nn.Module):
         # TODO replaced with a switch style
         # TODO consider how to handle verified false
         
-        if method == 'retrain': 
+        if method == 'retrain' or method == 'reset': 
             triples = torch.cat((previous_true, cur_true), 0) if cur_true is not None else previous_true # may do not have new true triples
             pre_emb_ent = self.model.emb_ent.weight.clone().detach()
         elif method == 'finetune':
             triples = cur_true
             pre_emb_ent = self.model.emb_ent.weight.clone().detach()
-        elif method == 'reset':
-            pre_emb_ent = None
         else:
             raise ValueError
 

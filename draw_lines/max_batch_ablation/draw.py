@@ -28,5 +28,5 @@ for i, line in enumerate(data):
 
 plt.xlabel('Time(s)')
 plt.ylabel('Progress Ratio')
-plt.legend(title='Max Batch Size')
+plt.legend(title=r'$b_m^{max}$')
 plt.savefig('max_batch_ablation.pdf')

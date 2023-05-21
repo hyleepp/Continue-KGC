@@ -298,12 +298,25 @@ class ActiveLearning(object):
             heap = [HeapNode((float("-inf"), None)) for _ in range(self.args.active_num)]
 
             batch_begin, batch_size = 0, 1
+            # batch_begin, batch_size = 0, self.max_batch_for_inference
+
+            # ret_top_k = torch.ones(self.args.active_num) * float("inf") *  -1
+            # ret_top_k = [torch.Tensor([0, 0, 0], device='cuda') for _ in range(self.args.active_num)]
 
             with tqdm(total=len(candidate_queries), unit='ex') as bar:
                 bar.set_description("Get candidate progress")
                 while batch_begin < len(candidate_queries):
                     queries = candidate_queries[batch_begin: batch_begin + batch_size] # (bs, 2)
                     scores, _ = self.model(queries, eval_mode=True, require_reg=False) # scores and reg_factor
+
+                    # #### Try torch topk
+                    # scores = scores.view(-1)
+                    # _, cur_topk_idx = torch.topk(scores, self.args.active_num)
+                    # self.update_heap_v2(scores, queries, cur_topk_idx, heap)
+
+
+                    ####
+
                     passed_pair_idx = (scores > heap[0].value).nonzero() # the idx of possible scores, the idx is [query_idx, candidate_idx]
                     # store to heap and screen out unqualified ones in parallel style
 
@@ -335,6 +348,38 @@ class ActiveLearning(object):
         for i in range(len(pair_idx)):
             query_idx, t = pair_idx[i]
             score = scores[query_idx, t].item()
+            if score > heap[0].value:
+                triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) # tensor([h, r, t])
+                # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
+                triple_tuple = tuple(triple.tolist())
+                if triple_tuple not in self.previous_true_set and \
+                        triple_tuple not in self.previous_false_set and \
+                        triple_tuple not in cur_seen:  # todo find some better way to do so
+                    # Remove the top element and rearrange it after adding new elements so that the smallest element is at the top of the heap again
+                    heapq.heapreplace(heap, HeapNode((score, triple)))
+                    reciprocal_tuple = (triple_tuple[2], triple_tuple[1] + self.model.n_rel, triple_tuple[0])
+                    cur_seen.add(reciprocal_tuple) # the reciprocal triples should also be filtered, they are equivalent in unexplored set
+
+        del queries, scores, pair_idx 
+        torch.cuda.empty_cache()
+        
+        return 
+
+    def update_heap_v2(self, scores, queries, pair_idx, heap) -> None:
+        """update the current heap with triples that has a score greater than the top of the heap.
+        used for torch.topk based method
+
+        Args:
+            scores (_type_): the scores of all triples, scores[i, j] means the score of i-th query and j-th candidate entity (or t for simplicity)
+            queries (_type_): [[h, r]] 
+            pair_idx (_type_): [query_idx (h, r), candidate_idx (t)] 
+            heap (_type_): the heap that scores the most promised triples
+        """
+        # TODO see if we let this run on cpu and we continue gpu processes
+        cur_seen = set() # to avoid the case that both ori triple and its rec one all appears
+        for i in range(len(pair_idx)):
+            score = scores[pair_idx[i]].item()
+            query_idx, t = pair_idx[i] // self.args.n_ent, pair_idx[i] % self.args.n_ent
             if score > heap[0].value:
                 triple = torch.stack((queries[query_idx][0], queries[query_idx][1], t)) # tensor([h, r, t])
                 # if triple not in previous_true and triple not in previous_false: # avoid rise what we have predicted
@@ -491,11 +536,16 @@ class ActiveLearning(object):
 
         candidate_quires = self.get_candidates_queries()
         while completion_ratio < self.args.expected_completion_ratio:
+            start_time = time.time()
             candidates_triples = self.knowledge_mining(candidate_quires)
+            end_time = time.time()
+            time_diff = end_time - start_time
+            with open('draw_lines/time_per_step/data2.txt', 'a+') as f:
+                f.write(str(time_diff) + ' ')
             true_count, false_count, completion_ratio = self.verification(candidates_triples)
             self.report_current_state(step, true_count, false_count, completion_ratio)
 
-            if self.args.update_freq > 0 and step % self.args.update_freq == 0:  # < 0 means never update
+            if self.args.update_freq > 0 and (step + 1) % self.args.update_freq == 0:  # < 0 means never update
                 self.incremental_learning(step)
             if step == 500:
                 break

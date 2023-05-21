@@ -23,5 +23,5 @@ for i, line in enumerate(data):
 plt.xlabel('Time(s)')
 plt.ylabel('Progress Ratio')
 # plt.xscale('log')
-plt.legend(title='Verification Nums')
+plt.legend(title=r'$n_c$')
 plt.savefig('active_num_ablation.pdf')
