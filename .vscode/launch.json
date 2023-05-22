@@ -4,6 +4,7 @@
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "transe",
             "type": "python",
@@ -67,21 +68,19 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
-                "CUDA_VISIBLE_DEVICES": "4"
+                "CUDA_VISIBLE_DEVICES": "0"
             },
             "args": [
                 "--dataset",
                 "FB15K",
                 "--model",
                 "UniBi_2",
-                "--setting",
-                "active_learning",
                 "--init_ratio",
                 "0.9",
                 "--max_epochs",
-                "100",
+                "10",
                 "--update_freq",
-                "1",
+                "-1",
                 "--patient",
                 "2",
                 "--regularizer",

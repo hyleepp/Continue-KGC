@@ -10,7 +10,7 @@ python main.py \
     --neg_size -1 \
     --max_completion_step 200 \
     --max_epochs 100 \
-    --reg_weight 0.01 \
+    --reg_weight 2 \
     --incremental_learning_method retrain \
     --active_num 10000 \
     --incremental_learning_epoch 10 \

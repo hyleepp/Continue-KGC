@@ -271,7 +271,7 @@ class ProgressiveKGC(object):
         focus_entities = torch.arange(self.model.n_ent).to(self.model.device)  # get all nodes # ! default, can be improved
         candidate_queries = []
         for node in focus_entities:
-            class_name = self.id2class.get(node.item()) if self.args.dataset == 'FB15k' else None # the class of this entity, like trump -> human
+            class_name = self.id2class.get(node.item()) if self.args.dataset.lower() == 'fb15k' else None # the class of this entity, like trump -> human
             if class_name:
                 candidate_relations = list(self.query_filter.get(class_name))
                 candidate_relations = torch.tensor(candidate_relations, dtype=node.dtype).to(node.device)
