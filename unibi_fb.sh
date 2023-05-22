@@ -1,9 +1,8 @@
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=0
 python main.py \
     --dataset FB15K \
     --model UniBi_2 \
     --regularizer DURA_UniBi_2 \
-    --setting active_learning \
     --batch_size 1000 \
     --init_ratio 0.9 \
     --patient 5 \

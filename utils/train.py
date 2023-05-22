@@ -18,21 +18,25 @@ def set_environ():
 
     return 
 
-def get_savedir(model_name: str, dataset_name: str, gcn_type: str, regularizer: str, reg_weight: float, incremental_learning_method: str) -> str:
+def get_savedir(model_name: str, dataset_name: str) -> str:
     '''get the save dir based on model and dataset names'''
     dt = datetime.datetime.now()
     date = dt.strftime("%m_%d")
-    if gcn_type == 'None':
-        save_dir = os.path.join(
-            os.environ["LOG_DIR"], date, dataset_name,
-            model_name + '_' + regularizer + '_' + str(reg_weight) + '_' + incremental_learning_method
-        )
-    else:
-        save_dir = os.path.join(
-            os.environ["LOG_DIR"], date, dataset_name,
-            model_name + '_' + gcn_type + dt.strftime('_%H_%M_%S')
-        )
+    # if gcn_type == 'None':
+    #     save_dir = os.path.join(
+    #         os.environ["LOG_DIR"], date, dataset_name,
+    #         model_name + '_' + regularizer + '_' + str(reg_weight) + '_' + incremental_learning_method
+    #     )
+    # else:
+    #     save_dir = os.path.join(
+    #         os.environ["LOG_DIR"], date, dataset_name,
+    #         model_name + '_' + gcn_type + dt.strftime('_%H_%M_%S')
+    #     )
 
+    save_dir = os.path.join(
+        os.environ["LOG_DIR"], date, dataset_name,
+        model_name + '_' + dt.strftime('%H_%M_%S')
+    )
     os. makedirs(save_dir)
     return save_dir
 

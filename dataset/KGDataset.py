@@ -9,7 +9,7 @@ import torch
 
 '''Switch cases'''
 SETTING2SPLITS = {
-    'active_learning': ['init', 'unexplored']
+    'pkgc': ['init', 'unexplored']
 }
 
 class KGDataset(object):

@@ -3,7 +3,7 @@ import os
 
 from models import ALL_MODELS 
 from optimization.Regularizer import ALL_REGULARIZER
-from active_learning import ActiveLearning
+from pkgc import ProgressiveKGC 
 from utils.train import set_environ
 
 # torch.backends.cudnn.enable =True
@@ -50,6 +50,9 @@ def prepare_parser():
     )
     parser.add_argument(
         "--device", type=str, default='cuda', choices=['cpu', 'cuda'], help="which device, cpu or cuda"
+    )
+    parser.add_argument(
+        "--setting", type=str, default='pkgc', choices=['pkgc'], help='which setting in KG'
     )
 
     '''Pretrain Part '''
@@ -107,9 +110,6 @@ def prepare_parser():
         "--max_completion_step", type=int, default=200, help="max step for model to execute completing"
     )
     parser.add_argument(
-        "--setting", type=str, required=True, choices=['active_learning'], help='which setting in KG'
-    )
-    parser.add_argument(
         "--update_freq", type=int, default=1, help='how many step to do an incremental learning'
     )
     parser.add_argument(
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     # TODO use not all args, but the specific part of args like args.base
 
     # switch cases
-    if args.setting == 'active_learning':
-        active_learning = ActiveLearning(args)
-        active_learning.active_learning_running()
+    if args.setting == 'pkgc':
+        pkgc_task = ProgressiveKGC(args)
+        pkgc_task.PKGC_running()
     
